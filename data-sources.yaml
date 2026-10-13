@@ -1,0 +1,106 @@
+# Sources of truth for the PRI District Tracker.
+# See "Sources of truth" in the PRI AI project guide (.claude/skills/pri-data-sources).
+# Name credentials by their environment variable, never by their value.
+
+inputs:
+  # Data this project reads but does not own.
+
+  - name: Illinois legislative district boundaries
+    location: data/il_congress_current.geojson, data/il_senate.geojson, data/il_house.geojson
+    owner: U.S. Census Bureau (TIGER/Line)
+    access: public, no credential
+    changes: after each redistricting
+    mode: copy, refreshed manually
+    note: >
+      The older full-resolution congressional file (il_congress.geojson) is kept,
+      untracked, in the git-ignored reference/data/ folder. Boundaries drive both the rendered maps and the point-in-polygon
+      district assignment in scripts/pri_data.py.
+
+  - name: Current federal and state legislators
+    location: data/legislators-current.json, data/il_legislators.csv -> data/reps.json
+    owner: unitedstates/congress-legislators (public dataset)
+    access: public, no credential
+    changes: each election and on mid-term vacancies
+    mode: copy, refreshed by scripts/fetch_reps.py on every build (skip with PRI_SKIP_REPS=1)
+
+  - name: Illinois Web Toolkit and campus brand assets
+    location: cdn.toolkit.illinois.edu, cdn.brand.illinois.edu -> assets/vendor/
+    owner: University of Illinois (Web Toolkit / brand)
+    access: public, no credential
+    changes: when the toolkit is versioned
+    mode: copy, vendored by scripts/make_vendor.py so the app renders with no internet
+
+  - name: PRI website chrome
+    location: data/pri_footer.html (the build reads only this one); the captured
+      pri_head.html, pri_header.html, pri_scripts.html and pri_home.html sit, untracked,
+      in the git-ignored reference/data/ folder
+    owner: Prairie Research Institute web team
+    access: public, no credential
+    changes: when the PRI site is redesigned
+    mode: copy, refreshed manually
+
+  - name: INHS project and work inventories (source documents)
+    location: reference/Information/*.docx, reference/data/projects_by_district.txt,
+      reference/data/work_by_district.txt (git-ignored reference folder, not in the repository)
+    owner: Illinois Natural History Survey
+    access: internal, no credential
+    changes: as surveys report new work
+    mode: copy; the originals stay authoritative. Records are transcribed into
+          data/activities.json through the Data Console, not bulk-imported.
+
+owned:
+  # Data created here that exists nowhere else. These MUST be backed up.
+
+  - name: Tracker activities (the database of record)
+    location: data/activities.json  (table `activities` in PostgreSQL once hosted; tools/load-pg.php loads and verifies it)
+    backup: >
+      py scripts/backup_data.py - verified, timestamped snapshots to $PRI_BACKUP_DIR,
+      else <dataFolder>/backups when config.local.json names a dataFolder (on the
+      drive: ../../data/pri-district-tracker/backups), else ./backups.
+      Keeps 30 days of dailies, then one per month.
+      Schedule it daily; check it with `py scripts/backup_data.py --verify`.
+    note: >
+      Holds every activity plus its lifecycle stamps (ingested_at, updated_at,
+      show_until). Nothing is ever deleted; retiring a record only sets show_until
+      into the past. WARNING: a single-file database on a synced network share is
+      explicitly discouraged (.claude/skills/pri-database) because concurrent edits
+      overwrite each other. Moving to Postgres/MySQL on the Radiant VM resolves this.
+
+  - name: API keys (none held today)
+    location: <dataFolder>/keys.db - a separate, git-ignored SQLite database
+      (app standard v2 section A); on the drive ../../data/pri-district-tracker/keys.db
+    backup: >
+      Deliberately NOT in py scripts/backup_data.py, which snapshots the activities
+      only. A credential belongs in no export, report or shared copy. The owner
+      re-enters one with py scripts/keys.py --set NAME.
+    note: >
+      The tracker needs no key: scripts/fetch_reps.py reads the Open States public
+      bulk roster, which takes none, and district assignment is local point-in-polygon
+      against the tracked geojson. scripts/keys.py is the only door, so a key added
+      later has one home and never reaches data/activities.json, sql/data.sql, a
+      snapshot or PostgreSQL. Credentials for a database SERVER stay in the
+      environment, named in .env.example (standard exception A4).
+
+  - name: PRI QR code artwork
+    location: assets/PRI-QR.png
+    backup: covered by OneDrive sync
+    note: supplied by PRI; printed on the one-page handout.
+
+outputs:
+  # Files this project produces. Reproducible from inputs, owned records and code.
+
+  - name: Interactive tracker, print handout and offline Kit
+    location: index.html, handout.html, PRI-Tracker-Kit.html, data.js, data/geo.json
+    produced_by: scripts/build_site.py
+
+  - name: SQL import of the activities table (MySQL, PostgreSQL)
+    location: sql/data.sql, sql/data.pgsql.sql
+    produced_by: scripts/pri_sql.py
+
+  - name: Staff data-intake templates
+    location: templates/activities_template.csv, templates/awards_template.csv
+    produced_by: scripts/make_templates.py
+
+  - name: Offline chrome bundle
+    location: assets/vendor/toolkit.local.css, toolkit.local.js, pri_footer.local.html
+    produced_by: scripts/make_vendor.py

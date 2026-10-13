@@ -1,0 +1,6 @@
+{
+  "command": "py tools/check.py",
+  "healthy": "CHECK OK",
+  "timeoutSec": 600,
+  "note": "Runs the 91-test suite (probe backups go to a temp folder), the offline build (PRI_SKIP_REPS=1; it rewrites the tracked outputs and reports whether they differ from git), parses data/activities.json, and checks the data folder: when ../../data/pri-district-tracker exists, config.local.json must name it and backups must resolve there; the newest snapshot is verified and history.log counted, read-only. It does not start the Data Console or open a browser."
+}

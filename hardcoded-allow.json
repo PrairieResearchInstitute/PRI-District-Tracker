@@ -1,0 +1,107 @@
+[
+  {
+    "file": "index.html",
+    "match": "http",
+    "reason": "Build output of scripts/build_site.py. The addresses are public hyperlinks (ilga.gov member pages, legislator sites, PRI and campus pages) and the SVG namespace, inlined from data and the vendored toolkit. Page hyperlinks are not fetched resources; the offline tests prove the page loads nothing from the network."
+  },
+  {
+    "file": "handout.html",
+    "match": "http",
+    "reason": "Build output of scripts/build_site.py; public hyperlinks and the SVG namespace, as for index.html."
+  },
+  {
+    "file": "PRI-Tracker-Kit.html",
+    "match": "http",
+    "reason": "Build output of scripts/build_site.py; public hyperlinks, the SVG namespace and the inlined Illinois toolkit's own links, as for index.html."
+  },
+  {
+    "file": "data.js",
+    "match": "http",
+    "reason": "Build output of scripts/build_site.py: the legislator roster's public website and ilga.gov links, shown as hyperlinks."
+  },
+  {
+    "file": "*",
+    "match": "http://www.w3.org/2000/svg",
+    "reason": "The SVG XML namespace identifier, required in every inline SVG; never fetched."
+  },
+  {
+    "file": "scripts/build_site.py",
+    "match": "https://www.prairie.illinois.edu",
+    "reason": "Public PRI website links in the page header, footer and navigation; hyperlinks for the reader, the same on every computer and tier."
+  },
+  {
+    "file": "scripts/build_site.py",
+    "match": "https://cdn.toolkit.illinois.edu/3/toolkit",
+    "reason": "Fallback toolkit links used only when assets/vendor is missing (HEAD_ASSETS for a future hosted build); the offline build inlines the vendored copy instead."
+  },
+  {
+    "file": "*",
+    "match": "https://fonts.g",
+    "reason": "Google Fonts links in the fallback head (build_site.py), the inset preview (make_inset.py) and the vendoring script (make_vendor.py), which turns them into data: URIs once while online. The offline outputs carry none."
+  },
+  {
+    "file": "scripts/make_vendor.py",
+    "match": "https://",
+    "reason": "make_vendor.py runs once, online, to download the Illinois toolkit, brand assets, fonts and the PRI theme into assets/vendor; these are the public source addresses it fetches and the patterns it strips (OneTrust, gstatic)."
+  },
+  {
+    "file": "scripts/fetch_reps.py",
+    "match": "https://",
+    "reason": "Public legislator datasets (unitedstates/congress-legislators and Open States) that the build refreshes; listed in data-sources.yaml as inputs, the same on every computer and tier."
+  },
+  {
+    "file": "scripts/make_templates.py",
+    "match": "https://",
+    "reason": "Public citation links (CTAP site, a DOI) written as example text into the staff intake templates."
+  },
+  {
+    "file": "scripts/admin_server.py",
+    "match": "127.0.0.1",
+    "reason": "The Data Console binds to the loopback address on purpose (AGENTS.md security rule); the Host and Origin allow-list names the loopback forms. Never configuration: exposing the console beyond this computer is forbidden."
+  },
+  {
+    "file": "scripts/admin_server.py",
+    "match": "http://localhost:%d",
+    "reason": "Loopback Origin allowed by the Data Console's Host and Origin check (DNS-rebinding defence); part of the same security rule."
+  },
+  {
+    "file": "scripts/admin_server.py",
+    "match": "http://[::1",
+    "reason": "IPv6 loopback Origin allowed by the Data Console's Host and Origin check; part of the same security rule."
+  },
+  {
+    "file": "scripts/admin_ui.html",
+    "match": "https://…",
+    "reason": "Placeholder text in an empty link field of the Data Console form; not an address."
+  },
+  {
+    "file": "scripts/readme.json",
+    "match": "http://127.0.0.1:8770",
+    "reason": "README text telling the person where the local Data Console opens."
+  },
+  {
+    "file": "tests/test_security.py",
+    "match": "http",
+    "reason": "Test fixtures: the loopback test server and a hostile Origin (evil.example.com) that the CSRF tests expect to be refused."
+  },
+  {
+    "file": "tests/test_security.py",
+    "match": "not-the-token",
+    "reason": "Deliberately wrong CSRF token in a test that expects the request to be refused; not a secret."
+  },
+  {
+    "file": "compose.yaml",
+    "match": "http://127.0.0.1:8080/health.php",
+    "reason": "Container health check: the image's own Apache on its fixed internal port, probed from inside the container (drez-containerize PHP template); never published or configured per tier."
+  },
+  {
+    "file": "includes/core.php",
+    "match": "OneDrive([ -]",
+    "reason": "drez-php-core db_sqlite_journal_mode(): the pattern that recognises a synced folder so SQLite uses DELETE journalling there. A detector, not a path; the file is a library copy checked by drez-php-core.sync.json."
+  },
+  {
+    "file": "tests/php/run-tests.php",
+    "match": "http://127.0.0.1:",
+    "reason": "The PHP suite starts PHP's own server on a free loopback port for the page checks and talks to it; the port is chosen at run time and nothing leaves the machine."
+  }
+]

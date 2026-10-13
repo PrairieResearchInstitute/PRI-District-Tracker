@@ -1,0 +1,92 @@
+# drez-project-shape .gitignore template.
+# Source: Claude_Code_Skill_Specifications section 4 (templates\gitignore.txt),
+# plus the SQLite sidecars, keys.dat, .env and the generic OneDrive conflict
+# pattern folded in from drez-onedrive-repo-hygiene rule 4 and drez-new-electron-app.
+# check-shape.js S2 requires every non-comment line below in the app's
+# .gitignore. Add lines for the app; never remove one of these.
+
+# Real settings (portable mode) and server environment files
+config.local.json
+.env
+*.env
+
+# Reference material: briefs, design documents, notes. Never pushed.
+reference/
+
+# Databases and their sidecars. A -wal file holds committed rows that are not
+# yet checkpointed into the main file, so it is data, not scratch.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Per-machine sealed secrets
+keys.dat
+
+# Dependencies and build output
+node_modules/
+dist/
+out/
+
+# OneDrive conflict copies from any machine
+*-DESKTOP-*
+
+# ---- PRI District Tracker additions ----
+# Secrets - never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Build outputs (regenerate with: py scripts/build_site.py)
+index.html
+handout.html
+PRI-Tracker-Kit.html
+data.js
+data/geo.json
+data/reps.json
+sql/data.sql
+sql/data.pgsql.sql
+
+# Vendored offline chrome (regenerate with: py scripts/make_vendor.py)
+assets/vendor/
+
+# Scratch / inspection artefacts
+_shot_*.png
+_test_*.html
+*.tmp
+.tmp/
+
+# Local backup snapshots (keep off-site, not in the repo)
+backups/
+
+# Electron or tool caches a setup may create
+.cache/
+config.local.json.tmp
+
+# API keys live in their own SQLite database in the drive data folder (app standard
+# v2 section A), never in data/activities.json. The *.db lines above already cover
+# it; named here so nobody has to work that out, together with the plain-text stores
+# an older app might still carry. Never committed, never exported.
+keys.db
+keys.db-wal
+keys.db-shm
+api-keys.*
+api_keys.*
+*-keys.txt
+
+# Portable PHP for the checks (copied per machine, never committed; scripts/find_php.py)
+tools/php/
+
+# The legislator roster, downloaded from Open States by scripts/fetch_reps.py
+# on every build. It is fetched, not authored, and it carries contact details
+# for 176 named people. Nothing is lost by leaving it out: a fresh clone
+# downloads its own copy on the first build.
+data/il_legislators.csv
+data/legislators-current.json

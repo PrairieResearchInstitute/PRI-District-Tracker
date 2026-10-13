@@ -1,0 +1,12 @@
+{
+    "library": "drez-php-core",
+    "files": {
+        "includes/core.php": {
+            "from": "src/core.php",
+            "version": "0.1.0",
+            "source": "4b6fbba4d1ba9cea94597df9d39efc1863d952450909cf5773a148715729647c",
+            "copy": "4b6fbba4d1ba9cea94597df9d39efc1863d952450909cf5773a148715729647c"
+        }
+    },
+    "pulledAt": "2026-10-11T04:32:45Z"
+}

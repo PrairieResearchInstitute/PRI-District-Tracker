@@ -1,0 +1,72 @@
+# .dockerignore for the PRI District Tracker (drez-containerize PHP template plus app lines).
+# The Dockerfile copies the whole folder, so this list keeps data, settings,
+# secrets and the Python generator out of the image.
+# In .dockerignore "*.db" matches only at the top of the folder; "**/*.db"
+# matches at any depth. Keep the "**/" on every file pattern.
+.git
+.github
+reference
+data
+# php/data.php serves the static GEO and REPS from these two built files.
+!data/geo.json
+!data/reps.json
+backups
+logs
+tools/php
+tests
+.claude
+**/*.db
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.sqlite3
+**/*.mdf
+**/*.ldf
+**/*.bak
+**/config.php
+**/config.local.php
+**/.installed
+**/*.env
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*-DESKTOP-*
+**/*.docx
+**/*.pdf
+**/*.xlsx
+
+# PRI District Tracker additions: the generator, its tests and sources, settings
+scripts
+sql
+docs
+**/config.local.json
+**/config.template.json
+**/.env.example
+**/hardcoded-allow.json
+**/__pycache__
+README.md
+README-hosting.md
+AGENTS.md
+CLAUDE.md
+data-sources.yaml
+SETUP.bat
+preview.html
+tools
+# Repository state, build files and scratch: Apache would serve them from the
+# document root (/handoff.md, /plan.md, /compose.yaml), and none runs the app.
+.tmp
+handoff.md
+intent.md
+plan.md
+compose.yaml
+Dockerfile
+.dockerignore
+.gitignore
+.gitattributes
+drez-php-core.sync.json
+# The command-line tools the Radiant move runs inside the image as the owner role
+# (schema, roles, verified load). Apache refuses every web request for them (Dockerfile).
+!tools/migrate.php
+!tools/roles.php
+!tools/load-pg.php

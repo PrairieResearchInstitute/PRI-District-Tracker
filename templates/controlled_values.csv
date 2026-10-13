@@ -1,0 +1,161 @@
+﻿field,value
+survey,INHS
+survey,ISGS
+survey,ISWS
+survey,ISAS
+survey,ISTC
+type,Program
+type,Project
+type,Facility
+type,Grant
+type,Publication
+type,News
+type,Community science
+scope,statewide
+scope,sited
+scope,regional
+scope,external
+activity_status,Active
+activity_status,Ongoing
+activity_status,Completed
+activity_status,Planned
+activity_status,Published
+award_status,Active
+award_status,Completed
+award_status,Pending
+topic,Biodiversity & wildlife
+topic,Fisheries & aquatic life
+topic,Water resources
+topic,Plants & vegetation
+topic,Insects & pollinators
+topic,Wildlife disease & health
+topic,Geology & minerals
+topic,Climate & sustainability
+topic,Cultural & archaeological
+topic,Collections & data
+topic,Monitoring & compliance
+topic,Outreach & community science
+funder,IDNR
+funder,IDOT
+funder,Illinois Tollway (ISTHA)
+funder,IEPA
+funder,Illinois Dept. of Agriculture
+funder,Illinois Dept. of Public Health
+funder,USFWS
+funder,USGS
+funder,USACE
+funder,USDA
+funder,USDA APHIS
+funder,U.S. EPA
+funder,NSF
+funder,NOAA
+funder,U.S. DOE
+funder,The Nature Conservancy
+funder,Illinois Audubon Society
+funder,Illinois Native Plant Society
+funder,University of Illinois
+funder,Other (name it in notes)
+county,Adams
+county,Alexander
+county,Bond
+county,Boone
+county,Brown
+county,Bureau
+county,Calhoun
+county,Carroll
+county,Cass
+county,Champaign
+county,Christian
+county,Clark
+county,Clay
+county,Clinton
+county,Coles
+county,Cook
+county,Crawford
+county,Cumberland
+county,DeKalb
+county,De Witt
+county,Douglas
+county,DuPage
+county,Edgar
+county,Edwards
+county,Effingham
+county,Fayette
+county,Ford
+county,Franklin
+county,Fulton
+county,Gallatin
+county,Greene
+county,Grundy
+county,Hamilton
+county,Hancock
+county,Hardin
+county,Henderson
+county,Henry
+county,Iroquois
+county,Jackson
+county,Jasper
+county,Jefferson
+county,Jersey
+county,Jo Daviess
+county,Johnson
+county,Kane
+county,Kankakee
+county,Kendall
+county,Knox
+county,Lake
+county,LaSalle
+county,Lawrence
+county,Lee
+county,Livingston
+county,Logan
+county,Macon
+county,Macoupin
+county,Madison
+county,Marion
+county,Marshall
+county,Mason
+county,Massac
+county,McDonough
+county,McHenry
+county,McLean
+county,Menard
+county,Mercer
+county,Monroe
+county,Montgomery
+county,Morgan
+county,Moultrie
+county,Ogle
+county,Peoria
+county,Perry
+county,Piatt
+county,Pike
+county,Pope
+county,Pulaski
+county,Putnam
+county,Randolph
+county,Richland
+county,Rock Island
+county,Saline
+county,Sangamon
+county,Schuyler
+county,Scott
+county,Shelby
+county,St. Clair
+county,Stark
+county,Stephenson
+county,Tazewell
+county,Union
+county,Vermilion
+county,Wabash
+county,Warren
+county,Washington
+county,Wayne
+county,White
+county,Whiteside
+county,Will
+county,Williamson
+county,Winnebago
+county,Woodford
+yesno,yes
+yesno,no

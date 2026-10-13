@@ -1,0 +1,49 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      # Makes the offline tests FAIL rather than skip if the build outputs are missing.
+      # Without this a workflow that forgot to build would go green having checked nothing.
+      PRI_REQUIRE_BUILT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # No dependencies to install: the tracker is standard library only.
+      - name: Build the offline vendor bundle
+        run: python scripts/make_vendor.py
+
+      - name: Build the site
+        env:
+          PRI_SKIP_REPS: "1"      # no need to re-fetch legislators on every CI run
+        run: python scripts/build_site.py
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t tests -v
+
+      # The hosted layer (includes/, php/, tools/): lint every file and run the unit
+      # checks, which need no database. The PostgreSQL half of the suite runs on the
+      # owner's computer against its _test database (py tools/check.py).
+      - name: Check the hosted PHP layer
+        run: |
+          php --version
+          for f in includes/*.php php/*.php tools/*.php tests/php/*.php health.php; do php -l "$f"; done
+          php tests/php/run-tests.php
+
+      - name: Check for committed secrets
+        run: |
+          if grep -rIn --exclude-dir=.git --exclude=.env.example \
+               -E "(DB_PASSWORD|ADMIN_PASS|SECRET|API_KEY)\s*=\s*['\"][^'\"]+['\"]" . ; then
+            echo "::error::A credential looks hardcoded. Read it from the environment instead."
+            exit 1
+          fi
+          echo "No hardcoded credentials found."
