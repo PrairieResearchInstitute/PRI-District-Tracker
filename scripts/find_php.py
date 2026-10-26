@@ -16,7 +16,7 @@ Nothing is downloaded or installed.
 import os, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXTENSIONS = ["pdo_pgsql", "pdo_mysql", "pdo_sqlite", "mbstring"]
+EXTENSIONS = ["pdo_pgsql", "pdo_sqlite", "mbstring"]
 
 
 def find():

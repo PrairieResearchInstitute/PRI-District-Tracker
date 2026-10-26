@@ -24,6 +24,45 @@ DATE_FIELDS = ["ingested_at", "updated_at", "show_until"]
 EVERGREEN_TYPES = {"Program", "Facility"}
 DEFAULT_WINDOW_DAYS = 548  # ~18 months, suggested for dated items (News/Publication/Project/Grant)
 
+# The five surveys and their one palette (UI Elements spec, PDT-01). The colours lived
+# in four places that had drifted apart: the tracker's SURVEYS, the handout's SURVCOL
+# and TAGCOL, and the Data Console's survColor(), whose greens and blues were different
+# colours altogether. Everything now derives from this list.
+#
+#   color  the survey's own colour: dots, rules and solid tags
+#   tint   a pale fill for a tag behind text
+#   ink    the text colour on that tint, darkened where the survey colour would not
+#          carry enough contrast at small sizes (INHS, ISWS, ISTC)
+SURVEYS = [
+    {"id": "INHS", "name": "Illinois Natural History Survey",
+     "color": "#006230", "tint": "#EAF3DE", "ink": "#27500A"},
+    {"id": "ISGS", "name": "Illinois State Geological Survey",
+     "color": "#7D3E13", "tint": "#F1E7DD", "ink": "#7D3E13"},
+    {"id": "ISWS", "name": "Illinois State Water Survey",
+     "color": "#007E8E", "tint": "#DEF0F0", "ink": "#085041"},
+    {"id": "ISAS", "name": "Illinois State Archaeological Survey",
+     "color": "#5C0E41", "tint": "#F4E0EC", "ink": "#5C0E41"},
+    {"id": "ISTC", "name": "Illinois Sustainable Technology Center",
+     "color": "#1D58A7", "tint": "#E3ECF7", "ink": "#0C447C"},
+]
+DEFAULT_SURVEY = "INHS"
+
+# The record Status list (owner answer to Q-16, 2026-10-17): fixed everywhere, not
+# free text. The Data Console was already the only place with a list, so its list
+# is the one; the Kit builds its select from it at build time and the hosted back
+# office uses the copy in includes/ui.php, which tests/test_tokens.py holds to this.
+STATUSES = ["Active", "Ongoing", "Completed", "Planned", "Published", "Pending"]
+
+# What the back offices call each display-timer state (owner answer to Q-18).
+# The keys stay as they are in the data; only the words on screen change.
+LIFECYCLE_NAMES = {"evergreen": "Evergreen", "fresh": "Showing",
+                   "soon": "Expiring Soon", "expired": "Expired"}
+
+
+def survey_js():
+    """The palette as one JavaScript const, for every page that draws a survey."""
+    return "const SURVEYS=" + json.dumps(SURVEYS, separators=(",", ":")) + ";"
+
 
 def today_iso():
     return datetime.date.today().isoformat()

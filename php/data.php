@@ -18,7 +18,7 @@ $act = array_map(function ($r) {
     foreach (['us_house', 'il_senate', 'il_house'] as $k) {
         $r[$k] = json_decode($r[$k] ?: '[]');   // JSON text -> int array, as the front end expects
     }
-    // MySQL hands back 0/1 strings, PostgreSQL real booleans: the front end gets true/false either way.
+    // PostgreSQL hands back real booleans; the front end gets true/false either way.
     foreach (['featured', 'confirm', 'historic'] as $k) {
         $r[$k] = in_array($r[$k] ?? false, [true, 1, '1', 't', 'true'], true);
     }

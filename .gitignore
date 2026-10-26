@@ -90,3 +90,10 @@ tools/php/
 # downloads its own copy on the first build.
 data/il_legislators.csv
 data/legislators-current.json
+
+# The database of record stays on disk and out of git: only empty databases go
+# to a repository (D-021, commit f5392ff). scripts/backup_data.py snapshots it;
+# on Radiant it is mounted read-only for the load (docs/hosting.md).
+data/activities.json
+CLAUDE.local.md
+docs/handoffs/

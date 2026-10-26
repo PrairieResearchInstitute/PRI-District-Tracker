@@ -62,7 +62,7 @@ function php_cmd(): array {
             $cmd[] = '-d';
             $cmd[] = 'extension_dir=' . $dir;
         }
-        foreach (['pdo_pgsql', 'pdo_mysql', 'pdo_sqlite', 'mbstring'] as $e) {
+        foreach (['pdo_pgsql', 'pdo_sqlite', 'mbstring'] as $e) {
             if (extension_loaded($e)) {
                 $cmd[] = '-d';
                 $cmd[] = 'extension=' . $e;
@@ -118,20 +118,19 @@ check('no CURDATE() or DATE_SUB left in the layer', (function () use ($ROOT) {
     return true;
 })());
 
-// ---- the upsert in each dialect
+// ---- the upsert (PostgreSQL only since Q-11, 2026-10-20)
 $cols = ['id', 'title', 'group', 'ingested_at'];
-$pgUp = db_upsert_sql('activities', $cols, 'id', ['ingested_at'], ['version'], 'pgsql');
-$myUp = db_upsert_sql('activities', $cols, 'id', ['ingested_at'], ['version'], 'mysql');
+$pgUp = db_upsert_sql('activities', $cols, 'id', ['ingested_at'], ['version']);
 check('pgsql upsert uses ON CONFLICT ... EXCLUDED', str_contains($pgUp, 'ON CONFLICT ("id") DO UPDATE SET')
       && str_contains($pgUp, '"title" = EXCLUDED."title"'), $pgUp);
 check('pgsql upsert keeps the first ingested_at', str_contains($pgUp, '"ingested_at" = COALESCE("activities"."ingested_at", EXCLUDED."ingested_at")'), $pgUp);
 check('pgsql upsert bumps version', str_contains($pgUp, '"version" = "activities"."version" + 1'), $pgUp);
 check('pgsql upsert double-quotes "group" and uses no back-quote', str_contains($pgUp, '"group"') && !str_contains($pgUp, '`'), $pgUp);
-check('mysql upsert is unchanged in kind: ON DUPLICATE KEY UPDATE ... VALUES()', str_contains($myUp, 'ON DUPLICATE KEY UPDATE')
-      && str_contains($myUp, '`title` = VALUES(`title`)') && !str_contains($myUp, 'EXCLUDED'), $myUp);
+check('the upsert carries no MySQL form at all (Q-11)', !str_contains($pgUp, 'ON DUPLICATE KEY UPDATE')
+      && !str_contains($pgUp, 'VALUES(`') && !str_contains($pgUp, '`'), $pgUp);
 check('placeholders are named columns, never values', substr_count($pgUp, ':') === count($cols)
       && str_contains($pgUp, ':group'), $pgUp);
-check('db_ident refuses anything but a plain name', throws(fn() => db_ident('id; DROP TABLE x', 'pgsql'), 'Not a plain'));
+check('db_ident refuses anything but a plain name', throws(fn() => db_ident('id; DROP TABLE x'), 'Not a plain'));
 
 // ---- credentials: pg.env parsing, data folder resolution, the _test guard
 $fake = $TMP . DIRECTORY_SEPARATOR . 'pg.env';
@@ -182,7 +181,7 @@ check('pg.env naming another port is refused before connecting, password unprint
 @rmdir($pgRoot);
 
 [, $o] = run(array_merge(php_cmd(), ['-r', $probe]), ['DB_DRIVER' => 'oracle']);
-check('an unknown DB_DRIVER is refused', str_contains($o, 'DB_DRIVER must be mysql or pgsql'), trim($o));
+check('an unknown DB_DRIVER is refused', str_contains($o, 'DB_DRIVER must be pgsql'), trim($o));
 [, $o] = run(array_merge(php_cmd(), ['-r', 'require ' . var_export($ROOT . '/includes/db.php', true) . '; echo db_driver();']), ['DB_DRIVER' => null]);
 check('with no DB_DRIVER the engine is PostgreSQL (owner Q-06, 2026-10-12)', trim($o) === 'pgsql', trim($o));
 
@@ -573,8 +572,15 @@ check('a save from a stale version is refused (409) and changes nothing', $c ===
 [$c, $b] = http($port, '/php/admin_ingest.php', 'POST', $formH, http_build_query(array_merge($edit, ['version' => ''])));
 check('an edit without a version is refused (409)', $c === 409, (string) $c);
 
+// Retire asks on the page itself now (PDT-37, Q-27), so an unconfirmed post must
+// change nothing: the guard is the point, not the wording.
 [$c, $b] = http($port, '/php/admin_ingest.php', 'POST', $formH,
                  http_build_query(['action' => 'retire', 'id' => 'http-probe-record', 'csrf_token' => $tok]));
+check('Retire asks before it hides anything', $c === 200 && str_contains($b, 'Retire This Record?')
+      && db_value("SELECT (show_until IS DISTINCT FROM CURRENT_DATE - 1) FROM activities WHERE id = 'http-probe-record'") === true,
+      substr(strip_tags($b), 0, 300));
+[$c, $b] = http($port, '/php/admin_ingest.php', 'POST', $formH,
+                 http_build_query(['action' => 'retire', 'id' => 'http-probe-record', 'confirmed' => '1', 'csrf_token' => $tok]));
 check('Retire hides the record and keeps it', $c === 200 && str_contains($b, 'Retired')
       && db_value("SELECT (show_until = CURRENT_DATE - 1) FROM activities WHERE id = 'http-probe-record'") === true);
 $bnd = 'dtbnd' . bin2hex(random_bytes(6));

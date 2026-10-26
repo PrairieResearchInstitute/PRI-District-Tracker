@@ -1,8 +1,8 @@
 # Database schema
 
-Written from `migrations/` (PostgreSQL `*.pgsql.sql`, MySQL `*.mysql.sql`) and `sql/schema.sql` (the MySQL schema in one file). Update this page whenever a migration is added; `tests/test_schema_parity.py` checks the column lists agree.
+Written from `migrations/` (`*.pgsql.sql`). PostgreSQL is the only engine (Q-11, 2026-10-20). Update this page whenever a migration is added; `tests/test_schema_parity.py` checks the column lists agree.
 
-Types differ only where the engines do: `TINYINT(1)` on MySQL is `BOOLEAN` on PostgreSQL, `DATETIME` is `TIMESTAMP`, `DECIMAL` is `NUMERIC`. The tables are listed with their MySQL types.
+One engine, so one set of types.
 
 The same field names are used end to end: the JSON records in `data/activities.json`, the Data Console, `scripts/pri_sql.py` and the PHP layer all share them, so nothing has to be renamed as data moves from the local tool to the hosted database. The SQL reserved word `group` is quoted: back-quoted on MySQL, double-quoted on PostgreSQL. `lead` is back-quoted on MySQL, where it is reserved from version 8.0.2.
 
@@ -36,17 +36,17 @@ The same field names are used end to end: the JSON records in `data/activities.j
 | `us_house` | VARCHAR(160) | JSON int array, e.g. [13] (default '[]') |
 | `il_senate` | VARCHAR(160) | (default '[]') |
 | `il_house` | VARCHAR(160) | (default '[]') |
-| `featured` | TINYINT(1) | (required, default 0) |
-| `confirm` | TINYINT(1) | (required, default 0) |
+| `featured` | BOOLEAN | (required, default 0) |
+| `confirm` | BOOLEAN | (required, default 0) |
 | `keywords` | VARCHAR(255) | (default '') |
 | `notes` | TEXT |  |
 | `theme` | VARCHAR(60) | (default '') |
-| `ingested_at` | DATETIME | first load (set once) |
-| `updated_at` | DATETIME | last edit / re-ingest (resets freshness) |
+| `ingested_at` | TIMESTAMP | first load (set once) |
+| `updated_at` | TIMESTAMP | last edit / re-ingest (resets freshness) |
 | `show_until` | DATE | NULL = evergreen; else hides after this date |
 | `version` | INT | +1 on every write (migration 0002) (required, default 1) |
-| `region` | VARCHAR(60) | e.g. "Chicago metro", from activities.json (migration 0003) (default '') |
-| `historic` | TINYINT(1) | the historic flag from activities.json (migration 0003) (required, default 0) |
+| `region` | VARCHAR(60) | a named area larger than a district, for work that spans several: "Chicago metro", "Northern Illinois" (migration 0003, default '') |
+| `historic` | BOOLEAN | marks an older record, kept for the history rather than shown as current work (owner, 2026-10-20) (migration 0003, required, default FALSE) |
 
 ## `awards`
 
@@ -66,8 +66,8 @@ The same field names are used end to end: the JSON records in `data/activities.j
 | `status` | VARCHAR(40) | (default '') |
 | `url` | VARCHAR(400) | (default '') |
 | `notes` | TEXT |  |
-| `ingested_at` | DATETIME |  |
-| `updated_at` | DATETIME |  |
+| `ingested_at` | TIMESTAMP |  |
+| `updated_at` | TIMESTAMP |  |
 | `show_until` | DATE |  |
 
 ## `settings`
@@ -82,15 +82,15 @@ The same field names are used end to end: the JSON records in `data/activities.j
 Migration 0004 (D-018). Who holds which role, by NetID or campus group. The running app
 only reads it; `tools/roles.php`, run as the owner role, writes it.
 
-| Column | PostgreSQL | MySQL | Notes |
-|---|---|---|---|
-| `principal_kind` | `VARCHAR(10)` | `VARCHAR(10)` | `netid` or `group`; part of the key |
-| `principal` | `VARCHAR(255)` | `VARCHAR(255)` | lowercase NetID or campus group name; part of the key |
-| `role` | `VARCHAR(10)` | `VARCHAR(10)` | `admin`, `editor` or `viewer` |
-| `note` | `VARCHAR(255)` | `VARCHAR(255)` | why the grant exists |
-| `granted_by` | `VARCHAR(255)` | `VARCHAR(255)` | NetID of whoever ran the grant |
-| `granted_at` | `TIMESTAMP` | `DATETIME` | set on each grant |
-| `revoked_at` | `TIMESTAMP NULL` | `DATETIME NULL` | set by a revoke; the row stays, a later grant clears it |
+| Column | PostgreSQL | Notes |
+|---|---|---|
+| `principal_kind` | `VARCHAR(10)` | `netid` or `group`; part of the key |
+| `principal` | `VARCHAR(255)` | lowercase NetID or campus group name; part of the key |
+| `role` | `VARCHAR(10)` | `admin`, `editor` or `viewer` |
+| `note` | `VARCHAR(255)` | why the grant exists |
+| `granted_by` | `VARCHAR(255)` | NetID of whoever ran the grant |
+| `granted_at` | `TIMESTAMP` | set on each grant |
+| `revoked_at` | `TIMESTAMP NULL` | set by a revoke; the row stays, a later grant clears it |
 
 A user's role is the highest active grant to the user's NetID or any of the user's
 groups, together with the fallback allowlists in the environment (`includes/auth.php`).

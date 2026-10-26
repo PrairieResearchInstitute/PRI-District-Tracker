@@ -5,10 +5,10 @@ Two ways to run the exact same data model. **Curate locally, publish anywhere.**
 - **Local (today, no installs):** `scripts/admin_server.py` is a back-office **Data Console**
   that runs on your computer only. Ingest/edit records, date-stamp them, set each record's
   **display timer**, and click **Publish** to regenerate the static site.
-- **Hosted (PHP on PostgreSQL, the Radiant target; MySQL still selectable until go-live):** the `php/`,
+- **Hosted (PHP on PostgreSQL, the Radiant target):** the `php/`,
   `includes/` and `migrations/` layer moves the same data into a database so the timer runs
   **live** on the server — no rebuild needed for records to expire. `DB_DRIVER` picks the
-  engine (`pgsql` default since D-017, `mysql`); every query goes through `includes/db.php`.
+  engine (PostgreSQL only since Q-11); every query goes through `includes/db.php`.
 
 Nothing is ever deleted. The full history stays in the database; the public site only ever
 shows records whose **Show until** date is still in the future (or blank = never expires).
@@ -143,8 +143,10 @@ Steps, test tier first, then live with the same image tag:
 1. Build and tag the image once (drez-app-move, `tag.js`); transfer it.
 2. Schema, as the owner (the image carries `tools/migrate.php`, `tools/roles.php` and
    `tools/load-pg.php`; Apache refuses every web request for them):
-   `docker run --rm --network <proxy network> --env-file pri-district-tracker-test-owner.env <image:tag> php tools/migrate.php --live --confirm-live`
-   (`--live` means the tier's own database named by `DB_NAME`, as opposed to the `_test` target).
+   `docker run --rm --network <proxy network> --env-file pri-district-tracker-test-owner.env <image:tag> php tools/migrate.php --test`
+   (`--test` targets the database named by `DB_TEST_NAME`, which must end in `_test`). On the live
+   tier, with `pri-district-tracker-live-owner.env`, run `php tools/migrate.php --live --confirm-live`,
+   which targets `DB_NAME`.
 3. Grant the app role its rows (the SQL above).
 4. Load the records, verified, from the current `data/activities.json` mounted read-only:
    `docker run --rm --network <proxy network> --env-file pri-district-tracker-test-owner.env -v <path>/activities.json:/src/activities.json:ro <image:tag> php tools/load-pg.php --source /src/activities.json --live --confirm-live`
@@ -165,31 +167,32 @@ Steps, test tier first, then live with the same image tag:
 The app trusts the proxy's headers only because the container publishes no port: the proxy
 must strip incoming `X-Forwarded-*` headers before it sets its own.
 
-Schema changes after go-live are new numbered files in `migrations/` (a `.pgsql.sql` and
-a `.mysql.sql` twin), applied with `php tools/migrate.php`; an applied file is never
+Schema changes after go-live are new numbered files in `migrations/` (`.pgsql.sql`),
+applied with `php tools/migrate.php`; an applied file is never
 edited (the runner refuses a changed checksum).
 
-## Moving to the host (PHP + MySQL, the layer as first written; retiring at go-live, D-017)
+## Moving to the host (PHP on PostgreSQL)
 
-1. **Create the database** in cPanel → *MySQL Databases* (DB + user, grant all).
-2. **Import the schema:** phpMyAdmin → *Import* → `sql/schema.sql` (or run
-   `php tools/migrate.php --live --confirm-live` with `DB_DRIVER=mysql`).
-3. **Export your data locally**, then import it:
-   ```
-   py scripts/pri_sql.py            # writes sql/data.sql from data/activities.json
-   ```
-   phpMyAdmin → *Import* → `sql/data.sql`. (Re-running later refreshes rows; it never duplicates.)
-   *(The Data Console's “Export SQL” button does the same thing.)*
-4. **Upload** to your web root: `index.html`, `handout.html`, `assets/`, the `php/` folder,
-   and `data/geo.json` + `data/reps.json` (static map + rep data the public endpoint serves).
-5. **Configure** the environment (never a file in the repository): `DB_DRIVER=mysql`,
-   `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `ADMIN_EMAILS` (who may use the
-   back-office page); `.env.example` lists the names. Upload `includes/` with `php/`.
-6. **Go live with the timer:** in the hosted `index.html`, change
-   `<script src="data.js"></script>` → `<script src="php/data.php"></script>`.
-   Now records expire the instant `show_until` passes — no rebuild.
-7. **Ingest on the host:** visit `php/admin_ingest.php` through the campus login proxy. Same
-   date-stamping and *Show until* rules as the local tool; supports the form and CSV upload.
+The owner retired MySQL on 2026-10-20 (Q-11). The steps that referred to cPanel and
+phpMyAdmin are gone with it; the target is PostgreSQL on Radiant, and the "On Radiant"
+section above is the live procedure. What follows is the short form.
+
+1. **Create the database and role** on the tier, then put the credentials in
+   `<dataFolder>/pg.env` or the environment. Never a file in the repository;
+   `.env.example` lists the names.
+2. **Apply the schema:** `php tools/migrate.php --live --confirm-live`. The runner
+   checksums each file and refuses one that changed after it was applied.
+3. **Load the data:** `php tools/load-pg.php`, which compares every row after loading.
+   `py scripts/pri_sql.py` writes `sql/data.sql` for `psql` as the same data in
+   PostgreSQL form, and the Data Console's *Export SQL* button does the same.
+4. **Upload** to the web root: `index.html`, `handout.html`, `assets/`, the `php/` and
+   `includes/` folders, and `data/geo.json` plus `data/reps.json`.
+5. **Go live with the timer:** in the hosted `index.html`, change
+   `<script src="data.js"></script>` to `<script src="php/data.php"></script>`.
+   Records then expire the instant `show_until` passes, with no rebuild.
+6. **Ingest on the host:** visit `php/admin_ingest.php` through the campus login proxy.
+   The same date-stamping and *Show until* rules as the local tool, with the form and
+   CSV upload. The Data Console stays the editor of record until Q-13 says otherwise.
 
 ---
 
@@ -199,14 +202,13 @@ edited (the runner refuses a changed checksum).
 |---|---|
 | `scripts/pri_data.py` | shared data layer: load/save, freshness rule, lat/long→district |
 | `scripts/admin_server.py` + `scripts/admin_ui.html` | local back-office Data Console |
-| `scripts/pri_sql.py` | export `data/activities.json` → `sql/data.sql` (`--dialect pgsql` → `sql/data.pgsql.sql`) |
+| `scripts/pri_sql.py` | export `data/activities.json` → `sql/data.sql` (PostgreSQL) |
 | `scripts/build_site.py` | builds the static site; filters expired records out |
-| `migrations/` | numbered schema files, a `.pgsql.sql` and `.mysql.sql` twin each |
+| `migrations/` | numbered schema files, `.pgsql.sql` |
 | `tools/migrate.php` | applies them; checksums in `schema_migrations` |
 | `tools/load-pg.php` | loads `activities.json` into PostgreSQL and verifies every row |
-| `sql/schema.sql` | MySQL tables in one file (`activities`, `awards`, `settings`) |
 | `sql/data.sql` | generated activity rows (upsert) |
-| `includes/db.php` | the one data-access module: engine switch, credentials, freshness clause, identity |
+| `includes/db.php` | the one data-access module: credentials, freshness clause, identity |
 | `includes/activities.php` | the activities statements (upsert, retire, lists, JSON mapping) |
 | `php/data.php` | public live read (drop-in for `data.js`) |
 | `php/admin_ingest.php` | hosted back-office ingest (auth-protected) |

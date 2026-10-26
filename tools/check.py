@@ -31,6 +31,10 @@ Prints one line per check, then CHECK OK or CHECK FAILED: n.
      scripts/estate_pg.py starts it first when it is not running and stops it
      cleanly afterwards when this check started it. Without pg.env the check says
      so and passes, because the owner has not provisioned the drive cluster.
+  9. the authorship credit (drez-ui-elements rule 27): the exact line is in the
+     build constant, in every generated page (index.html, handout.html,
+     PRI-Tracker-Kit.html), in the back-office partial, the hosted back office
+     and the Data Console, and in the NOTICE at the repository root.
 
 Pure stdlib.
 """
@@ -92,6 +96,27 @@ try:
             ok("site builds offline; outputs match git")
 except subprocess.TimeoutExpired:
     fail("build_site.py did not finish in 600 s")
+
+# 9. The authorship credit (drez-ui-elements rule 27). Runs after the build, so the
+# generated pages it reads are the ones this run produced.
+CREDIT = "Developed by M. J. Dreslik, with Claude Opus 5"
+CREDIT_FILES = ["scripts/build_site.py", "index.html", "handout.html", "PRI-Tracker-Kit.html",
+                "includes/ui.php", "scripts/admin_ui.html", "NOTICE"]
+missing = []
+for rel in CREDIT_FILES:
+    try:
+        with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        text = ""
+    if CREDIT not in text:
+        missing.append(rel)
+if "dt_back_office_foot()" not in open(os.path.join(ROOT, "php", "admin_ingest.php"), encoding="utf-8").read():
+    missing.append("php/admin_ingest.php (no dt_back_office_foot())")
+if missing:
+    fail("the credit line \"%s\" is missing from: %s" % (CREDIT, ", ".join(missing)))
+else:
+    ok("the credit line is in every footer and in NOTICE (%d files and php/admin_ingest.php)" % len(CREDIT_FILES))
 
 # 3. Database of record.
 try:

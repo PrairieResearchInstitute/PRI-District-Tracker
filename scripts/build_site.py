@@ -5,9 +5,14 @@ prairie.illinois.edu). Reps refreshed every build via fetch_reps.py. Cards show 
 3 random entries (reshuffled each load); entries drill into a detail modal; the count
 numbers open a full list of that category, whose rows also drill into the detail.
 Pure stdlib. Run: py scripts/build_site.py
+
+Developed by M. J. Dreslik, with Claude Opus 5 (drez-ui-elements rule 27).
 """
 import json, math, os, re, subprocess, sys, base64
 import pri_data
+import ui_dialog
+import ui_tokens
+import ui_fonts
 
 # Derived from this file's location (never hardcode): the build always writes next to its
 # own source, so a copy of the project can't scatter its output into a different folder.
@@ -113,6 +118,12 @@ def rd(name):
 _footer_local = os.path.join(PROJ, "assets", "vendor", "pri_footer.local.html")
 PRI_FOOTER = (open(_footer_local, encoding="utf-8").read()
               if os.path.exists(_footer_local) else rd("pri_footer.html"))
+# The authorship credit (drez-ui-elements rule 27). It follows the toolkit <footer> in the
+# app's own footer area, never inside the toolkit markup; tools/check.py looks for it in
+# every generated page.
+CREDIT = "Developed by M. J. Dreslik, with Claude Opus 5"
+CREDIT_HTML = '<div class="app-credit">' + CREDIT + '</div>'
+PRI_FOOTER = PRI_FOOTER + CREDIT_HTML
 # --- OFFLINE chrome bundle (assets/vendor, built by scripts/make_vendor.py) ------------
 # When the bundle exists the app renders with NO internet: the toolkit banner/footer and the
 # fonts all come from local files (with data: URIs inside), so nothing is fetched at render
@@ -129,7 +140,14 @@ def _vread(name):
 
 _HEAD_META = ('<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
               '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">'
-              '<title>PRI Project District Tracker</title>')
+              '<title>PRI District Tracker</title>')
+# The app icon (platform D-037, D-038) as a data: URI from the committed assets/favicon.svg,
+# so the pages still load nothing from anywhere, from file:// or http alike.
+_ICON_SVG = os.path.join(PROJ, "assets", "favicon.svg")
+if os.path.exists(_ICON_SVG):
+    with open(_ICON_SVG, "rb") as _f:
+        _HEAD_META += ('<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,'
+                       + base64.b64encode(_f.read()).decode("ascii") + '">')
 
 if OFFLINE:
     # Fonts live inside toolkit.local.css, so the Google-Fonts block (GF) is empty.
@@ -191,8 +209,41 @@ PRI_PRINT_HEADER = ('<div class="ho-lh"><ilw-header>'
 
 # (GF is decided above, in the OFFLINE block.)
 
+# One button definition for every page (UI Elements spec, PDT-05). The tracker, the
+# handout and the Kit each carried their own, and they had drifted in padding, weight
+# and hover colour. Q-26 settles the colours: #FF5F05 is the accent and white never
+# sits on it, so the primary carries navy text and the hover swaps to #C84113, the
+# darker orange that does take white.
+# Colours are literal here because the three surfaces do not share a token block yet;
+# that is PDT-32, and when it lands only this function changes.
+_BUTTONS_CSS = """
+__S__.btn{border:0;border-radius:8px;padding:9px 16px;cursor:pointer;text-decoration:none;
+  display:inline-block;font-family:inherit;font-size:14px;line-height:1.15;font-weight:600}
+__S__.btn.pri{background:#FF5F05;color:#13294B}
+__S__.btn.pri:hover{background:#C84113;color:#fff}
+__S__.btn.dk{background:#13294B;color:#fff}
+__S__.btn.dk:hover{background:#0E1F3A}
+__S__.btn.gh{background:#fff;border:1px solid #DFE1E5;color:#23272C}
+__S__.btn.gh:hover{background:#F2F5F9}
+__S__.btn.sm{padding:4px 9px;border-radius:var(--radius-sm);font-size:12.5px}
+__S__.btn-link{background:none;border:0;padding:0;cursor:pointer;color:var(--link);
+  font-family:inherit;font-size:13px;font-weight:600;text-decoration:none}
+__S__.btn-link:hover{text-decoration:underline}
+__S__.btn:disabled{opacity:.5;cursor:default}
+/* PDT-07: one visible focus ring, so the keyboard shows where it is. Palette blue
+   rather than the orange accent, because every focusable thing here sits on a light
+   background and the accent would be the one place it disappears. */
+__S__:focus-visible{outline:3px solid #1D58A7;outline-offset:2px;border-radius:4px}
+"""
+
+
+def buttons_css(scope=""):
+    """The button rules, optionally scoped to one page's root selector."""
+    return _BUTTONS_CSS.replace("__S__", (scope + " ") if scope else "")
+
+
 MYCSS = """<style>
-#pdt{--blue:#13294B;--orange:#FF5F05;--storm:#707372;--ink:#1a1a1a;--line:#e3e3e2}
+/*TOKENS*/
 #onetrust-consent-sdk,#onetrust-banner-sdk,#ot-sdk-btn,#ot-sdk-btn-floating,.ot-sdk-show-settings,.ot-floating-button,.onetrust-pc-dark-filter,#onetrust-pc-sdk,#ot-sdk-cookie-policy{display:none !important}
 ilw-header, ilw-header *, ilw-footer, ilw-footer *{font-family:'Source Sans 3','Source Sans Pro','Source Sans',Arial,sans-serif}
 ilw-footer ilw-columns{display:flex;flex-wrap:wrap;gap:2.5em;align-items:flex-start}
@@ -204,6 +255,7 @@ ilw-footer .social-2{display:flex !important;flex-wrap:wrap;gap:10px;align-items
 ilw-footer .social-2 li{list-style:none;margin:0}
 ilw-footer .social-2 a{display:inline-flex;line-height:0}
 ilw-footer .social-2 img{width:26px !important;height:26px !important}
+.app-credit{font-family:'Source Sans 3','Source Sans Pro','Source Sans',Arial,sans-serif;font-size:13px;color:var(--storm-dark,#4A4C4B);text-align:center;padding:12px 26px}
 #pdt, #pdt p, #pdt li, #pdt select, #pdt h1, #pdt h2, #pdt h3, #pdt h4{font-family:'Source Sans 3','Source Sans Pro',Arial,sans-serif}
 #pdt h1, #pdt h2, #pdt h3, #pdt h4, #pdt .stat .n, #pdt .fund-amt{font-family:'Montserrat',Arial,sans-serif}
 #pdt .wrap{max-width:1060px;margin:24px auto 8px;padding:0 26px}
@@ -211,82 +263,89 @@ ilw-footer .social-2 img{width:26px !important;height:26px !important}
 #pdt .page-intro h1{font-weight:700;color:var(--blue);font-size:26px;margin:0 0 4px}
 #pdt .page-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 #pdt .page-intro p{color:var(--storm);margin:0;font-size:15px}
-#pdt .printbtn{flex:0 0 auto;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Source Sans 3',Arial,sans-serif}
-#pdt .printbtn:hover{background:#d94e00}
-#pdt .controls{display:flex;gap:16px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:18px 0 22px}
+#pdt .printbtn{flex:0 0 auto}
+#pdt .controls{display:flex;gap:16px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 18px;margin:18px 0 22px}
 #pdt .controls label{display:flex;flex-direction:column;font-size:12px;font-weight:600;color:var(--storm);text-transform:uppercase;letter-spacing:.04em;gap:5px}
-#pdt .controls select{font-size:15px;padding:7px 10px;border:1px solid #c9c9c7;border-radius:7px;background:#fff;color:var(--ink);min-width:150px}
+#pdt .controls select{font-size:15px;padding:8px 10px;border:1px solid var(--field);border-radius:var(--radius-md);background:#fff;color:var(--ink);min-width:150px}
 #pdt .layout{display:flex;gap:24px;align-items:flex-start}
 #pdt .leftcol{flex:1;min-width:0}
 #pdt .headerblock{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px}
 #pdt .titlecol{flex:1 1 240px;min-width:0}
 #pdt .fundcol{flex:0 0 auto}
 #pdt .inset{flex:0 0 280px}
-#pdt .mapbox{border:1px solid var(--line);border-radius:10px;background:#fff;padding:14px}
+#pdt .mapbox{border:1px solid var(--line);border-radius:var(--radius-lg);background:#fff;padding:14px}
 #pdt .inset h3{font-weight:600;font-size:13px;margin:0 0 8px;color:var(--blue)}
 #pdt .zoom{width:100%;aspect-ratio:1/1}
 #pdt .loc{width:104px;margin:12px auto 0}
 #pdt .loc-cap{text-align:center;font-size:11px;color:var(--storm);margin-top:5px}
-#pdt .titlecol h2{font-weight:700;color:var(--blue);font-size:25px;margin:0 0 3px}
+#pdt .titlecol h2{font-weight:700;color:var(--blue);font-size:26px;margin:0 0 3px}
 #pdt .rep{margin:0 0 12px;font-size:15px}
-#pdt .rep a{color:#185FA5;text-decoration:none;font-weight:600}
+#pdt .rep a{color:var(--link);text-decoration:none;font-weight:600}
 #pdt .rep a:hover{text-decoration:underline}
 #pdt .repx{color:var(--storm);font-style:italic}
-#pdt .fund{background:var(--blue);color:#fff;border-radius:10px;padding:14px 20px;display:inline-flex;flex-direction:column;min-width:230px}
+#pdt .fund{background:var(--blue);color:#fff;border-radius:var(--radius-lg);padding:14px 20px;display:inline-flex;flex-direction:column;min-width:230px}
 #pdt .fund-amt{font-size:30px;font-weight:700;line-height:1.05}
-#pdt .fund-lbl{font-size:12.5px;opacity:.85;margin-top:3px}
-#pdt .fund-tag{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--orange);color:var(--blue);align-self:flex-start;border-radius:4px;padding:1px 7px;margin-top:8px;font-weight:600}
+#pdt .fund-lbl{font-size:12px;opacity:.85;margin-top:3px}
+#pdt .fund-tag{font-size:11px;text-transform:uppercase;letter-spacing:.06em;background:var(--orange);color:var(--blue);align-self:flex-start;border-radius:var(--radius-xs);padding:1px 7px;margin-top:8px;font-weight:600}
 #pdt .stats{display:flex;gap:10px;flex-wrap:wrap;margin:0}
-#pdt .stat{background:#f0f1f0;border-radius:8px;padding:7px 13px}
+#pdt .stat{background:var(--soft);border-radius:var(--radius-md);padding:7px 13px}
 #pdt .stat .n{font-size:21px;font-weight:700;color:var(--blue);line-height:1.1}
 #pdt .stat .l{font-size:12px;color:var(--storm)}
-#pdt .stat.clickable{cursor:pointer}
+/* PDT-07: the count tile, the card counts, the list entries, the "see all" link and
+   the modal rows were clickable divs and spans, so a keyboard could not reach them
+   and Enter did nothing. They are buttons now; these rules keep the look they had. */
+#pdt .stat.clickable,#pdt .mini-item,#pdt .m-row,#pdt .c.clickable,#pdt .more{
+  font:inherit;color:inherit;text-align:left;border:0;background:none}
+#pdt .mini-item,#pdt .m-row{width:100%}
+#pdt .m-row .m-txt,#pdt .m-row .m-sub{display:block}
+#pdt .more{padding:0}
+#pdt .stat .n,#pdt .stat .l{display:block}
+#pdt .stat.clickable{cursor:pointer;display:block;background:var(--soft)}
 #pdt .stat.clickable:hover{outline:2px solid var(--orange)}
 #pdt .bigcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:0}
-#pdt .bigcard{border:1px solid var(--line);border-radius:10px;background:#fff;padding:14px 16px}
+#pdt .bigcard{border:1px solid var(--line);border-radius:var(--radius-lg);background:#fff;padding:14px 16px}
 #pdt .bigcard-h{display:flex;align-items:center;gap:8px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:8px}
-#pdt .bigcard-dot{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+#pdt .bigcard-dot{width:12px;height:12px;border-radius:var(--radius-xs);flex:0 0 auto}
 #pdt .bigcard-h h3{margin:0;font-size:17px;font-weight:700;color:var(--blue)}
-#pdt .bigcard-h .c{margin-left:auto;font-size:13px;color:var(--storm);background:#f0f1f0;border-radius:10px;padding:1px 10px;min-width:22px;text-align:center}
+#pdt .bigcard-h .c{margin-left:auto;font-size:13px;color:var(--storm);background:var(--soft);border-radius:var(--radius-lg);padding:1px 10px;min-width:22px;text-align:center}
 #pdt .c.clickable{cursor:pointer}
-#pdt .c.clickable:hover{background:var(--orange);color:#fff}
+#pdt .c.clickable:hover{background:var(--il-altgeld);color:#fff}
 #pdt .bigcard-sub{font-size:12px;color:var(--storm);margin:0 0 9px}
 #pdt .mini{display:flex;flex-direction:column;gap:6px}
-#pdt .mini-item{cursor:pointer;border-radius:6px;padding:6px 8px;margin:0 -8px;display:flex;flex-direction:column;gap:1px}
+#pdt .mini-item{cursor:pointer;border-radius:var(--radius-sm);padding:6px 8px;margin:0 -8px;display:flex;flex-direction:column;gap:1px}
 #pdt .mini-item:hover{background:#f6f7f6}
 #pdt .mini-item b{font-size:14px;font-weight:600;color:var(--ink)}
 #pdt .mini-item span{font-size:12px;color:var(--storm)}
-#pdt .more{font-size:12.5px;color:var(--blue);margin:10px 0 0;font-weight:600;cursor:pointer;display:inline-block}
-#pdt .more:hover{text-decoration:underline}
+#pdt .more{margin:10px 0 0;display:inline-block}
 #pdt .none{font-size:13px;color:var(--storm);font-style:italic;margin:2px 0 0}
 #pdt .protonote{font-size:12px;color:var(--storm);line-height:1.6;margin-top:20px}
 #pdt .modal{position:fixed;inset:0;background:rgba(19,41,75,.55);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:9999;overflow:auto}
 #pdt .modal[hidden]{display:none}
-#pdt .modal-card{background:#fff;border-radius:12px;max-width:780px;width:100%;padding:24px 28px;position:relative}
-#pdt .m-close{position:absolute;top:8px;right:14px;border:none;background:none;font-size:28px;line-height:1;color:var(--storm);cursor:pointer}
-#pdt .m-eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--orange);font-weight:600}
+#pdt .modal-card{background:#fff;border-radius:var(--radius-dialog);max-width:780px;width:100%;padding:24px 28px;position:relative}
+#pdt .m-close{position:absolute;top:8px;right:14px;border:none;background:none;font-size:26px;line-height:1;color:var(--storm);cursor:pointer}
+#pdt .m-eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--il-altgeld);font-weight:600}
 #pdt .m-title{font-size:22px;color:var(--blue);margin:4px 30px 12px 0}
-#pdt .m-summary{font-size:15px;line-height:1.6;color:#333;margin:0 0 10px}
-#pdt .m-desc{font-size:14px;line-height:1.6;color:#4b5158;margin:0 0 14px}
+#pdt .m-summary{font-size:15px;line-height:1.6;color:var(--ink);margin:0 0 10px}
+#pdt .m-desc{font-size:14px;line-height:1.6;color:var(--storm-dark);margin:0 0 14px}
 #pdt .m-meta{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:14px;align-content:start}
 #pdt .m-meta dt{color:var(--storm);font-weight:600}
 #pdt .m-meta dd{margin:0;color:var(--ink)}
 #pdt .m-cols{display:flex;gap:20px;margin-top:4px;align-items:stretch}
 #pdt .m-cols .m-meta{flex:1.15;min-width:0}
-#pdt .m-photo{flex:1;min-width:0;min-height:225px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(150deg,#1c3a66,#13294B 62%);position:relative;display:flex;align-items:center;justify-content:center}
+#pdt .m-photo{flex:1;min-width:0;min-height:225px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--line);background:linear-gradient(150deg,#1c3a66,#13294B 62%);position:relative;display:flex;align-items:center;justify-content:center}
 #pdt .m-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #pdt .m-photo .ph{display:flex;flex-direction:column;align-items:center;gap:10px;color:#fff}
 #pdt .m-photo .ph svg{width:54px;height:54px;opacity:.5}
 #pdt .m-photo .ph span{font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;opacity:.85}
 @media(max-width:680px){#pdt .m-cols{flex-direction:column}}
-#pdt .m-flag{margin-top:12px;font-size:13px;background:#fcf2d6;color:#7a5a06;border-radius:8px;padding:8px 12px}
+#pdt .m-flag{margin-top:12px;font-size:13px;background:var(--warn-bg);color:var(--warn-text);border-radius:var(--radius-md);padding:8px 12px}
 #pdt .m-list{display:flex;flex-direction:column;gap:2px;margin-top:8px}
-#pdt .m-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer}
-#pdt .m-row:hover{background:#f0f1f0}
+#pdt .m-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:var(--radius-md);cursor:pointer}
+#pdt .m-row:hover{background:var(--soft)}
 #pdt .m-row .m-sub{font-size:12px;color:var(--storm);margin-top:2px}
-#pdt .m-arrow{color:var(--orange);font-weight:700;flex:0 0 auto}
-#pdt .m-back{border:none;background:none;color:#185FA5;cursor:pointer;font-size:13px;font-weight:600;padding:0;margin:0 0 10px}
-@media(max-width:820px){#pdt .layout{flex-direction:column}#pdt .inset{flex:1 1 auto;width:100%}#pdt .bigcards{grid-template-columns:1fr}#pdt .zoom{max-width:320px}}
+#pdt .m-arrow{color:var(--il-altgeld);font-weight:700;flex:0 0 auto}
+#pdt .m-back{margin:0 0 10px}
+@media(max-width:820px){#pdt .wrap{padding-left:16px;padding-right:16px}#pdt .layout{flex-direction:column}#pdt .inset{flex:1 1 auto;width:100%}#pdt .bigcards{grid-template-columns:1fr}#pdt .zoom{max-width:320px}}
 @media print{
 @page{size:letter portrait;margin:0.5in}
 header,footer,ilw-header,ilw-footer,#pdt .controls,#pdt .page-intro,#pdt .protonote,#pdt-modal{display:none !important}
@@ -302,12 +361,15 @@ body{background:#fff !important;min-width:0 !important}
 #pdt .more{display:none !important}
 #pdt a{color:#13294B !important;text-decoration:none !important}
 }
+.tscroll{overflow-x:auto}
 </style>"""
+MYCSS = MYCSS.replace("/*TOKENS*/", ui_tokens.tokens_css("#pdt"))
+MYCSS = MYCSS.replace("</style>", buttons_css("#pdt") + "</style>")
 
 MARKUP = """
 <main id="pdt">
 <div class="wrap">
-  <div class="page-intro"><div class="pi-text"><h1>Project District Tracker</h1><p>What the Prairie Research Institute does in your legislative district.</p></div><button id="printBtn" class="printbtn" type="button">Open one-page handout</button></div>
+  <div class="page-intro"><div class="pi-text"><h1>PRI District Tracker</h1><p>What the Prairie Research Institute does in your legislative district.</p></div><button id="printBtn" class="btn pri printbtn" type="button">Open One-Page Handout</button></div>
   <div class="controls">
     <label>Survey<select id="survey"><option value="all">All PRI</option><option value="INHS">INHS</option><option value="ISGS">ISGS</option><option value="ISWS">ISWS</option><option value="ISAS">ISAS</option><option value="ISTC">ISTC</option></select></label>
     <label>Level<select id="level"><option>Federal</option><option>State</option></select></label>
@@ -322,15 +384,15 @@ MARKUP = """
     <aside class="inset"><div class="mapbox"><h3 id="insetTitle">District</h3><div class="zoom" id="mapZoom"></div><div class="loc" id="mapLoc"></div><div class="loc-cap" id="locCap"></div></div></aside>
   </div>
   <div class="protonote">Prototype - data compiled June 2026 (currently INHS; other surveys to be added). Cards show 3 random entries, reshuffled each refresh - click the count to see all. Representatives auto-refreshed each build (federal + Open States). Funding figures are placeholders.</div>
-  <div id="pdt-modal" class="modal" hidden><div class="modal-card"><button class="m-close" aria-label="Close">&times;</button><div id="m-body"></div></div></div>
+  <div id="pdt-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pdt-m-title" hidden><div class="modal-card"><button class="m-close" type="button" aria-label="Close">&times;</button><div id="m-body"></div></div></div>
 </div>
 </main>
 """
 
 APP = """
 <script>
-const SURVEYS=[{id:'INHS',name:'Illinois Natural History Survey',color:'#006230'},{id:'ISGS',name:'Illinois State Geological Survey',color:'#7D3E13'},{id:'ISWS',name:'Illinois State Water Survey',color:'#007E8E'},{id:'ISAS',name:'Illinois State Archaeological Survey',color:'#5C0E41'},{id:'ISTC',name:'Illinois Sustainable Technology Center',color:'#1D58A7'}];
-const KINDS=[{id:'projects',label:'Projects',color:'#1D58A7'},{id:'grants',label:'Active grants',color:'#006230'},{id:'publications',label:'Publications',color:'#5C0E41'},{id:'news',label:'News',color:'#C84113'},{id:'outreach',label:'Outreach & community science',color:'#007E8E'}];
+/*SURVEYS*/
+const KINDS=[{id:'projects',label:'Projects',color:'#13294B'},{id:'grants',label:'Active Grants',color:'#C84113'},{id:'publications',label:'Publications',color:'#4877B8'},{id:'news',label:'News',color:'#707372'},{id:'outreach',label:'Outreach & Community Science',color:'#4A4C4B'}];
 const sv=document.getElementById('survey'),lv=document.getElementById('level'),chm=document.getElementById('chamber'),dst=document.getElementById('district');
 const ACTBYID={};ACT.forEach(function(a){ACTBYID[a.id]=a;});
 var CUR={matched:[],survey:'all'};var LASTLIST=null;var PRINTING=false;
@@ -343,16 +405,43 @@ function fillDistricts(){const k=ck();dst.innerHTML='';if(k==='us_senate'){[['du
 function matchAct(a,k,num){if(a.scope==='statewide')return true;if(k==='us_senate')return a.scope!=='external';if(a.scope==='external')return false;return (a[k]||[]).indexOf(Number(num))>=0;}
 function svgmap(mapK,sel,vb){const ch=GEO.chambers[mapK];let other='',hot='';for(const key in ch){const isSel=(sel==='ALL')||(sel!==null&&Number(key)===Number(sel));const p='<path d="'+ch[key].d+'" fill="'+(isSel?'#FF5F05':'#E4E5E5')+'" stroke="'+(isSel?'#13294B':'#FFFFFF')+'" stroke-width="'+(isSel?1.2:0.4)+'"/>';if(isSel)hot+=p;else other+=p;}return '<svg viewBox="'+vb+'" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block">'+other+hot+'</svg>';}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function repHtml(k,num){var r=(REPS[k]||{})[num];if(!r)return '<span class="repx">Seat vacant / to be verified</span>';var nm=esc(r.name)+(r.party?' ('+esc(r.party)+')':'');return r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+nm+'</a>':'<span>'+nm+'</span>';}
+function repHtml(k,num){var r=(REPS[k]||{})[num];if(!r)return '<span class="repx">Officeholder to be verified.</span>';var nm=esc(r.name)+(r.party?' ('+esc(r.party)+')':'');return r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+nm+'</a>':'<span>'+nm+'</span>';}
 function fundCard(){return '<div class="fund"><div class="fund-amt">$&mdash;</div><div class="fund-lbl">Active project funding &middot; last 10 years</div><span class="fund-tag">placeholder &mdash; pending data</span></div>';}
 function shuffle(arr){var a=arr.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
-function entryLi(a){return '<li class="mini-item" data-id="'+esc(a.id)+'"><b>'+esc(a.title)+'</b><span>'+esc(a.type+(a.status?' \\u00b7 '+a.status:''))+(a.confirm?' \\u00b7 verify district':'')+'</span></li>';}
+function entryLi(a){return '<li><button type="button" class="mini-item" data-id="'+esc(a.id)+'"><b>'+esc(a.title)+'</b><span>'+esc(a.type+(a.status?' \\u00b7 '+a.status:''))+(a.confirm?' \\u00b7 verify district':'')+'</span></button></li>';}
 function catItems(type,id){if(type==='all')return CUR.matched;if(type==='survey')return CUR.matched.filter(a=>surveyOf(a)===id);if(type==='kind')return CUR.matched.filter(a=>surveyOf(a)===CUR.survey&&kindOf(a)===id);return [];}
 function catLabel(type,id){if(type==='all')return 'All PRI projects in this district';if(type==='survey'){var s=SURVEYS.find(x=>x.id===id);return (s?s.name:id);}if(type==='kind'){var k=KINDS.find(x=>x.id===id);return (k?k.label:id);}return '';}
-function showModal(html){document.getElementById('m-body').innerHTML=html;document.getElementById('pdt-modal').hidden=false;}
-function closeModal(){document.getElementById('pdt-modal').hidden=true;LASTLIST=null;}
-function openList(type,id){LASTLIST={type:type,id:id};var items=catItems(type,id);var h='<div class="m-eyebrow">'+esc(catLabel(type,id))+' \\u00b7 '+items.length+' result'+(items.length===1?'':'s')+'</div><h2 class="m-title">Topics in this district</h2>';if(!items.length){h+='<p class="none">Nothing recorded here for this district yet.</p>';}else{h+='<ul class="m-list">';items.forEach(function(a){h+='<li class="m-row" data-id="'+esc(a.id)+'"><div><b>'+esc(a.title)+'</b><div class="m-sub">'+esc([surveyOf(a),a.type,a.status].filter(Boolean).join(' \\u00b7 '))+'</div></div><span class="m-arrow">\\u2192</span></li>';});h+='</ul>';}showModal(h);}
-function openDetail(id){var a=ACTBYID[id];if(!a)return;var dn=[];['us_house','il_senate','il_house'].forEach(function(c){if((a[c]||[]).length)dn.push({us_house:'U.S. House',il_senate:'IL Senate',il_house:'IL House'}[c]+' '+a[c].join(', '));});var where=a.scope==='statewide'?'Statewide (every district)':(a.scope==='external'?'Outside Illinois':(dn.join('  \\u00b7  ')||a.location||''));var back=LASTLIST?'<button class="m-back" data-back="1">\\u2190 Back to list</button>':'';var h=back+'<div class="m-eyebrow">'+esc(surveyOf(a)+' \\u00b7 '+a.type)+'</div><h2 class="m-title">'+esc(a.title)+'</h2>';if(a.summary)h+='<p class="m-summary">'+esc(a.summary)+'</p>';if(a.description&&a.description!==a.summary)h+='<p class="m-desc">'+esc(a.description)+'</p>';var mrows='';[['Lead',a.lead],['Funder / partners',a.funder],['Status',a.status],['Location',a.location],['Districts',where],['Program area',a.group]].forEach(function(p){if(p[1])mrows+='<dt>'+esc(p[0])+'</dt><dd>'+esc(p[1])+'</dd>';});var photo=a.image?('<img src="'+esc(a.image)+'" alt="'+esc(a.title)+'">'):('<div class="ph">'+FINIAL_SVG+'<span>'+esc(surveyOf(a))+'</span></div>');h+='<div class="m-cols"><dl class="m-meta">'+mrows+'</dl><div class="m-photo">'+photo+'</div></div>';if(a.confirm)h+='<p class="m-flag">District assignment is approximate and needs confirmation against a street address.</p>';showModal(h);}
+var MODAL_OPENER=null;
+function showModal(html){
+  var m=document.getElementById('pdt-modal');
+  if(m.hidden)MODAL_OPENER=document.activeElement;
+  document.getElementById('m-body').innerHTML=html;
+  var t=m.querySelector('.m-title');if(t)t.id='pdt-m-title';
+  m.hidden=false;
+  var f=m.querySelector('.m-close');if(f)f.focus();
+}
+function closeModal(){
+  var m=document.getElementById('pdt-modal');
+  m.hidden=true;LASTLIST=null;
+  if(MODAL_OPENER&&MODAL_OPENER.focus){try{MODAL_OPENER.focus();}catch(e){}}
+  MODAL_OPENER=null;
+}
+// Escape closes it, and Tab stays inside while it is open.
+document.addEventListener('keydown',function(e){
+  var m=document.getElementById('pdt-modal');
+  if(!m||m.hidden)return;
+  if(e.key==='Escape'){e.preventDefault();closeModal();return;}
+  if(e.key!=='Tab')return;
+  var f=m.querySelectorAll('button,a[href],select,input,textarea,[tabindex]:not([tabindex="-1"])');
+  if(!f.length)return;
+  var first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+},true);
+function countTag(n,type,id){var a=' data-list-type="'+type+'" data-list-id="'+id+'" title="See all"';
+  return n?('<button type="button" class="c clickable"'+a+'>'+n+'</button>'):('<span class="c">'+n+'</span>');}
+function openList(type,id){LASTLIST={type:type,id:id};var items=catItems(type,id);var h='<div class="m-eyebrow">'+esc(catLabel(type,id))+' \\u00b7 '+items.length+' result'+(items.length===1?'':'s')+'</div><h2 class="m-title">Topics in this district</h2>';if(!items.length){h+='<p class="none">Nothing recorded for this district yet.</p>';}else{h+='<ul class="m-list">';items.forEach(function(a){h+='<li><button type="button" class="m-row" data-id="'+esc(a.id)+'"><span class="m-txt"><b>'+esc(a.title)+'</b><span class="m-sub">'+esc([surveyOf(a),a.type,a.status].filter(Boolean).join(' \\u00b7 '))+'</span></span><span class="m-arrow">\\u2192</span></button></li>';});h+='</ul>';}showModal(h);}
+function openDetail(id){var a=ACTBYID[id];if(!a)return;var dn=[];['us_house','il_senate','il_house'].forEach(function(c){if((a[c]||[]).length)dn.push({us_house:'U.S. House',il_senate:'Illinois Senate',il_house:'IL House'}[c]+' '+a[c].join(', '));});var where=a.scope==='statewide'?'Statewide (every district)':(a.scope==='external'?'Outside Illinois':(dn.join('  \\u00b7  ')||a.location||''));var back=LASTLIST?'<button class="m-back" data-back="1">\\u2190 Back to list</button>':'';var h=back+'<div class="m-eyebrow">'+esc(surveyOf(a)+' \\u00b7 '+a.type)+'</div><h2 class="m-title">'+esc(a.title)+'</h2>';if(a.summary)h+='<p class="m-summary">'+esc(a.summary)+'</p>';if(a.description&&a.description!==a.summary)h+='<p class="m-desc">'+esc(a.description)+'</p>';var mrows='';[['Lead',a.lead],['Funder / partners',a.funder],['Status',a.status],['Location',a.location],['Districts',where],['Program area',a.group]].forEach(function(p){if(p[1])mrows+='<dt>'+esc(p[0])+'</dt><dd>'+esc(p[1])+'</dd>';});var photo=a.image?('<img src="'+esc(a.image)+'" alt="'+esc(a.title)+'">'):('<div class="ph">'+FINIAL_SVG+'<span>'+esc(surveyOf(a))+'</span></div>');h+='<div class="m-cols"><dl class="m-meta">'+mrows+'</dl><div class="m-photo">'+photo+'</div></div>';if(a.confirm)h+='<p class="m-flag">District assignment is approximate and needs confirmation against a street address.</p>';showModal(h);}
 function render(){const k=ck(),num=dst.value;if(!num)return;const full='0 0 '+GEO.w+' '+GEO.h;
   const matched=ACT.filter(a=>matchAct(a,k,num));const survey=sv.value;
   const scope=(survey==='all')?matched:matched.filter(a=>surveyOf(a)===survey);
@@ -362,7 +451,7 @@ function render(){const k=ck(),num=dst.value;if(!num)return;const full='0 0 '+GE
   const distLabel=(k==='us_senate')?'U.S. Senate (statewide)':(chamberLabel()+' District '+num);
   var statAttr=(survey==='all')?'data-list-type="all"':('data-list-type="survey" data-list-id="'+survey+'"');
   let head='<h2>'+esc(distLabel)+'</h2><p class="rep">'+repHtml(k,num)+'</p>';
-  head+='<div class="stats"><div class="stat clickable" '+statAttr+' title="See all"><div class="n">'+scope.length+'</div><div class="l">'+(survey==='all'?'PRI projects':esc(survey)+' projects')+'</div></div>';
+  head+='<div class="stats"><button type="button" class="stat clickable" '+statAttr+' title="See all"><span class="n">'+scope.length+'</span><span class="l">'+(survey==='all'?'PRI projects':esc(survey)+' projects')+'</span></button>';
   if(survey==='all'){const sc=new Set(matched.map(surveyOf)).size;head+='<div class="stat"><div class="n">'+sc+'</div><div class="l">surveys active</div></div>';}
   head+='</div>';
   document.getElementById('sheetHead').innerHTML=head;
@@ -370,14 +459,14 @@ function render(){const k=ck(),num=dst.value;if(!num)return;const full='0 0 '+GE
   let html='<div class="bigcards">';
   if(survey==='all'){
     SURVEYS.forEach(s=>{const items=matched.filter(a=>surveyOf(a)===s.id);
-      html+='<div class="bigcard"><div class="bigcard-h" style="border-color:'+s.color+'"><span class="bigcard-dot" style="background:'+s.color+'"></span><h3>'+s.id+'</h3><span class="c'+(items.length?' clickable':'')+'" data-list-type="survey" data-list-id="'+s.id+'" title="See all">'+items.length+'</span></div><p class="bigcard-sub">'+esc(s.name)+'</p>';
-      if(items.length){html+='<ul class="mini">'+(PRINTING?items:shuffle(items).slice(0,3)).map(entryLi).join('')+'</ul>';if(!PRINTING&&items.length>3)html+='<span class="more" data-list-type="survey" data-list-id="'+s.id+'">see all '+items.length+' \\u2192</span>';}
-      else html+='<p class="none">No projects loaded yet</p>';
+      html+='<div class="bigcard"><div class="bigcard-h" style="border-color:'+s.color+'"><span class="bigcard-dot" style="background:'+s.color+'"></span><h3>'+s.id+'</h3>'+countTag(items.length,'survey',s.id)+'</div><p class="bigcard-sub">'+esc(s.name)+'</p>';
+      if(items.length){html+='<ul class="mini">'+(PRINTING?items:shuffle(items).slice(0,3)).map(entryLi).join('')+'</ul>';if(!PRINTING&&items.length>3)html+='<button type="button" class="btn-link more" data-list-type="survey" data-list-id="'+s.id+'">see all '+items.length+' \\u2192</button>';}
+      else html+='<p class="none">Nothing recorded for this district yet.</p>';
       html+='</div>';});
   } else {
     KINDS.forEach(kd=>{const list=scope.filter(a=>kindOf(a)===kd.id);
-      html+='<div class="bigcard"><div class="bigcard-h" style="border-color:'+kd.color+'"><span class="bigcard-dot" style="background:'+kd.color+'"></span><h3>'+kd.label+'</h3><span class="c'+(list.length?' clickable':'')+'" data-list-type="kind" data-list-id="'+kd.id+'" title="See all">'+list.length+'</span></div>';
-      if(list.length){html+='<ul class="mini">'+(PRINTING?list:shuffle(list).slice(0,3)).map(entryLi).join('')+'</ul>';if(!PRINTING&&list.length>3)html+='<span class="more" data-list-type="kind" data-list-id="'+kd.id+'">see all '+list.length+' \\u2192</span>';}
+      html+='<div class="bigcard"><div class="bigcard-h" style="border-color:'+kd.color+'"><span class="bigcard-dot" style="background:'+kd.color+'"></span><h3>'+kd.label+'</h3>'+countTag(list.length,'kind',kd.id)+'</div>';
+      if(list.length){html+='<ul class="mini">'+(PRINTING?list:shuffle(list).slice(0,3)).map(entryLi).join('')+'</ul>';if(!PRINTING&&list.length>3)html+='<button type="button" class="btn-link more" data-list-type="kind" data-list-id="'+kd.id+'">see all '+list.length+' \\u2192</button>';}
       else html+='<p class="none">None recorded for this district yet</p>';
       html+='</div>';});
   }
@@ -404,6 +493,8 @@ if([...dst.options].some(o=>o.value==='13'))dst.value='13';
 render();
 </script>
 """
+# One palette for every page (UI Elements spec, PDT-01): pri_data.SURVEYS.
+APP = APP.replace("/*SURVEYS*/", pri_data.survey_js())
 
 # geo.json lets the hosted PHP endpoint (php/data.php) serve the same GEO block the
 # static data.js bakes in, so switching to the live database is a one-line src swap.
@@ -430,10 +521,9 @@ with open(OUT, "w", encoding="utf-8") as f:
 
 # ---- handout.html : print-optimized one-pager (All-PRI or per-survey via ?survey=) ----
 HANDOUT_CSS = """<style>
-:root{--blue:#13294B;--orange:#FF5F05;--storm:#707372;--ink:#1a1a1a;--line:#e3e3e2}
+/*TOKENS*/
 body{margin:0;background:#9aa3ad;font-family:'Source Sans 3','Source Sans Pro',Arial,sans-serif;color:var(--ink)}
-.ho-bar{display:flex;gap:14px;justify-content:center;align-items:center;background:#0e1f3a;padding:9px}
-.ho-bar button{background:var(--orange);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.ho-bar{display:flex;gap:14px;justify-content:center;align-items:center;background:var(--blue-deep);padding:9px}
 .ho-bar a{color:#fff;font-size:13px;text-decoration:none}
 #ho{display:flex;justify-content:center;padding:22px 12px;overflow-x:auto}
 .ho-sheet{background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2060%2060'%3E%3Cpath%20fill='%2313294b'%20fill-opacity='.06'%20d='M58.6,0H31h-2H1.4H0v1.4V29v2v27.6V60h1.4H29h2h27.6H60v-1.4V31v-2V1.4V0H58.6z%20M31,1h26.6L31,27.6V1z%20M29,1v26.6L2.4,1H29z%20M1,2.4L27.6,29H1V2.4z%20M1,57.6V31h26.6L1,57.6z%20M29,59H2.4L29,32.4V59z%20M31,59V32.4L57.6,59H31z%20M59,57.6L32.4,31H59V57.6z%20M59,29H32.4L59,2.4V29z'/%3E%3C/svg%3E");background-size:34px 34px;width:8.5in;height:11in;box-sizing:border-box;padding:0;display:flex;flex-direction:column;overflow:hidden;flex:0 0 auto}
@@ -448,35 +538,35 @@ body{margin:0;background:#9aa3ad;font-family:'Source Sans 3','Source Sans Pro',A
 .ho-sheet h1{font-family:'Montserrat',Arial,sans-serif;font-weight:700;color:var(--blue);font-size:27px;margin:3px 0 2px;line-height:1.08}
 .ho-sub{font-size:13px;color:var(--storm)}
 .ho-rep{font-size:14px;margin-top:7px;font-weight:600}
-.ho-rep a{color:#185FA5;text-decoration:none}
+.ho-rep a{color:var(--link);text-decoration:none}
 .ho-top{display:flex;gap:22px;align-items:flex-start;margin-top:6px;position:relative;z-index:1}
 .ho-tri{position:absolute;top:-0.55in;right:-0.5in;width:4.6in;height:4in;z-index:0;pointer-events:none}
 .ho-tri2{position:absolute;bottom:-0.3in;left:-0.5in;width:4.6in;height:4in;z-index:0;pointer-events:none}
 .ho-id,.ho-map{position:relative;z-index:1}
 .ho-id{flex:1;min-width:0;display:flex;flex-direction:column}
 .ho-map{flex:0 0 2.5in;text-align:center}
-.ho-map .z{width:2.5in;height:2.5in;margin-left:auto;border:1px solid #d7dbe1;border-radius:7px;background:#fafbfd;box-shadow:0 2px 7px rgba(19,41,75,.12);overflow:hidden}
+.ho-map .z{width:2.5in;height:2.5in;margin-left:auto;border:1px solid #d7dbe1;border-radius:var(--radius-md);background:#fafbfd;box-shadow:0 2px 7px rgba(19,41,75,.12);overflow:hidden}
 .ho-loc{width:1.35in;margin:8px auto 0}
 .ho-loccap{font-size:10px;color:var(--storm);margin-top:3px}
 .ho-loc{overflow:visible}
 .ho-map .z svg .sel{filter:drop-shadow(4px 6px 7px rgba(19,41,75,.5))}
 .ho-loc svg{overflow:visible}
 .ho-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:7px}
-.ho-tile{border-radius:9px;padding:9px 10px;color:#fff;display:flex;align-items:center;gap:8px;min-width:0}
+.ho-tile{border-radius:var(--radius-md);padding:9px 10px;color:#fff;display:flex;align-items:center;gap:8px;min-width:0}
 .ho-tile .ho-ico{flex:0 0 auto;display:flex}
 .ho-tile .ho-ico svg{width:17px;height:17px}
 .ho-tile .n{font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:18px;line-height:1}
 .ho-tile .l{font-size:8.2px;margin-top:2px;opacity:.93;text-transform:uppercase;letter-spacing:.04em;line-height:1.22;font-weight:600}
 .ho-focal-row{display:flex;gap:10px;margin-top:8px;align-items:stretch}
-.ho-focal{background:linear-gradient(150deg,#1c3a66,#13294B 62%);color:#fff;border-radius:12px;padding:14px 17px;flex:1 1 64%;min-width:0;display:flex;gap:12px;align-items:flex-start;box-shadow:0 8px 18px rgba(19,41,75,.32),0 2px 5px rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.07)}
-.ho-feat-img{flex:1 1 36%;min-width:0;border-radius:12px;overflow:hidden;border:1px solid rgba(19,41,75,.16);box-shadow:0 8px 18px rgba(19,41,75,.25);position:relative;background:linear-gradient(150deg,#1c3a66,#13294B 62%)}
+.ho-focal{background:linear-gradient(150deg,#1c3a66,#13294B 62%);color:#fff;border-radius:var(--radius-dialog);padding:14px 17px;flex:1 1 64%;min-width:0;display:flex;gap:12px;align-items:flex-start;box-shadow:0 8px 18px rgba(19,41,75,.32),0 2px 5px rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.07)}
+.ho-feat-img{flex:1 1 36%;min-width:0;border-radius:var(--radius-dialog);overflow:hidden;border:1px solid rgba(19,41,75,.16);box-shadow:0 8px 18px rgba(19,41,75,.25);position:relative;background:linear-gradient(150deg,#1c3a66,#13294B 62%)}
 .ho-feat-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .ho-feat-img .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .ho-feat-img .ph svg{width:42%;height:auto;opacity:.45}
 .ho-feat-img .ph:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--orange)}
-.ho-focal-ico{flex:0 0 auto;color:#FF5F05;display:flex}
+.ho-focal-ico{flex:0 0 auto;color:var(--orange);display:flex}
 .ho-focal-ico svg{width:30px;height:30px}
-.ho-focal .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#FF5F05;font-weight:700}
+.ho-focal .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--il-altgeld);font-weight:700}
 .ho-focal .t{font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:17.5px;margin-top:3px;line-height:1.14}
 .ho-focal .d{font-size:12px;opacity:.93;margin-top:6px;line-height:1.42}
 .ho-hl{margin-top:8px;position:relative;z-index:1}
@@ -484,13 +574,13 @@ body{margin:0;background:#9aa3ad;font-family:'Source Sans 3','Source Sans Pro',A
 .ho-hl-head .bar{height:3px;width:28px;background:var(--orange)}
 .ho-hl-head h2{font-family:'Montserrat',Arial,sans-serif;font-weight:700;color:var(--blue);font-size:16px;margin:0}
 .ho-hl-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
-.ho-item{background:#fff;border:1px solid #e1e3e6;border-left:4px solid var(--acc,#FF5F05);border-radius:6px;padding:10px 13px;box-shadow:0 2px 6px rgba(19,41,75,.09)}
+.ho-item{background:#fff;border:1px solid #e1e3e6;border-left:4px solid var(--acc,#FF5F05);border-radius:var(--radius-sm);padding:10px 13px;box-shadow:0 2px 6px rgba(19,41,75,.09)}
 .ho-item .t{font-weight:700;font-size:12.5px;color:var(--ink);line-height:1.2}
 .ho-item .d{font-size:10.5px;color:#555;line-height:1.42;margin-top:4px}
-.ho-tag{font-size:9px;border-radius:4px;padding:1px 7px;white-space:nowrap;font-weight:700}
+.ho-tag{font-size:9px;border-radius:var(--radius-xs);padding:1px 7px;white-space:nowrap;font-weight:700}
 .ho-more{font-size:12px;color:var(--storm);font-style:italic;margin-top:13px}
 .ho-surv-cards{display:flex;flex-direction:column;gap:7px}
-.ho-sc{display:flex;align-items:stretch;background:#fff;border:1px solid #dfe1e5;border-radius:7px;overflow:hidden;box-shadow:0 2px 6px rgba(19,41,75,.1)}
+.ho-sc{display:flex;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 2px 6px rgba(19,41,75,.1)}
 .ho-sc-tab{flex:0 0 0.92in;background:var(--sc);background-image:linear-gradient(150deg,rgba(255,255,255,.16),rgba(0,0,0,.2));color:#fff;display:flex;align-items:center;justify-content:center;padding:8px 6px}
 .ho-sc-tab .ac{font-family:'Montserrat',Arial,sans-serif;font-weight:800;font-size:22px;line-height:1;letter-spacing:.01em}
 .ho-sc-main{flex:1;min-width:0;padding:8px 15px 9px;display:flex;flex-direction:column;justify-content:center}
@@ -498,7 +588,7 @@ body{margin:0;background:#9aa3ad;font-family:'Source Sans 3','Source Sans Pro',A
 .ho-sc-main .cnt .num{font-family:'Montserrat',Arial,sans-serif;font-size:25px;font-weight:800;color:var(--sc);line-height:.9}
 .ho-sc-main .cnt .lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#5b5e62;line-height:1.05;max-width:0.5in;letter-spacing:.03em;padding-top:1px}
 .ho-sc-main .proj{display:grid;grid-template-columns:repeat(3,1fr)}
-.ho-sc-main .pc{font-size:11px;color:#33363a;line-height:1.34;padding:0 12px;position:relative}
+.ho-sc-main .pc{font-size:11px;color:var(--ink)63a;line-height:1.34;padding:0 12px;position:relative}
 .ho-sc-main .pc:first-child{padding-left:0}
 .ho-sc-main .pc:last-child{padding-right:0}
 .ho-sc-main .pc+.pc::before{content:"";position:absolute;left:0;top:8%;height:84%;width:1px;background:#98AFD2}
@@ -508,7 +598,7 @@ body{margin:0;background:#9aa3ad;font-family:'Source Sans 3','Source Sans Pro',A
 .ho-foot .c b{font-size:11px;opacity:1}
 .ho-qr{flex:0 0 auto;display:flex;align-items:center;gap:9px}
 .ho-qr .qrcap{font-size:8px;color:#cdd6e2;text-align:right;line-height:1.2;max-width:0.8in}
-.ho-qr .qrimg{width:0.58in;height:0.58in;display:block;background:#fff;border-radius:4px;padding:2px;box-sizing:border-box}
+.ho-qr .qrimg{width:0.58in;height:0.58in;display:block;background:#fff;border-radius:var(--radius-xs);padding:2px;box-sizing:border-box}
 .ho-foot-url{font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;color:#fff;text-decoration:none;letter-spacing:.02em;white-space:nowrap;flex:0 0 auto}
 @media print{
 @page{size:letter portrait;margin:0}
@@ -518,12 +608,14 @@ html,body{background:#fff;margin:0 !important;width:8.5in !important;min-width:0
 .ho-sheet{width:8.5in;height:11in;box-shadow:none}
 .ho-item,.ho-tile,.ho-sc{break-inside:avoid}
 }
+.tscroll{overflow-x:auto}
 </style>"""
-HANDOUT_BODY = '<div class="ho-bar"><button onclick="window.print()">Save as PDF</button><a href="index.html">&larr; Back to the map</a></div><div id="ho"><div class="ho-sheet">' + PRI_PRINT_HEADER + '<div class="ho-sep"></div><div class="ho-pad" id="ho-body"></div></div></div>'
+HANDOUT_CSS = HANDOUT_CSS.replace("/*TOKENS*/", ui_tokens.tokens_css())
+HANDOUT_CSS = HANDOUT_CSS.replace("</style>", buttons_css() + "</style>")
+HANDOUT_BODY = '<div class="ho-bar"><button class="btn pri" onclick="window.print()">Save as PDF</button><a href="index.html">&larr; Back to the map</a></div><div id="ho"><div class="ho-sheet">' + PRI_PRINT_HEADER + '<div class="ho-sep"></div><div class="ho-pad" id="ho-body"></div></div></div>'
 HANDOUT_APP = """<script>
-var SURV={INHS:'Illinois Natural History Survey',ISGS:'Illinois State Geological Survey',ISWS:'Illinois State Water Survey',ISAS:'Illinois State Archaeological Survey',ISTC:'Illinois Sustainable Technology Center'};
-var TAGCOL={INHS:['#EAF3DE','#27500A'],ISGS:['#f1e7dd','#7D3E13'],ISWS:['#def0f0','#085041'],ISAS:['#f4e0ec','#5C0E41'],ISTC:['#e3ecf7','#0C447C']};
-var SURVCOL={INHS:'#006230',ISGS:'#7D3E13',ISWS:'#007E8E',ISAS:'#5C0E41',ISTC:'#1D58A7'};
+/*SURVEYS*/
+var SURV={},TAGCOL={},SURVCOL={};SURVEYS.forEach(function(s){SURV[s.id]=s.name;TAGCOL[s.id]=[s.tint,s.ink];SURVCOL[s.id]=s.color;});
 var SURVICON={INHS:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.52-4.48 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>',ISGS:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>',ISWS:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 5.3 6 10.3a6 6 0 0 1-12 0c0-5 6-10.3 6-10.3z"/></svg>',ISAS:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M4 10l8-6 8 6z"/></svg>',ISTC:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.7 1.7M17.3 17.3 19 19M19 5l-1.7 1.7M6.7 17.3 5 19"/></svg>'};
 var ICONS={projects:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6l-4.5 8.5A2 2 0 0 0 7.3 21h9.4a2 2 0 0 0 1.8-3.5L14 9V3"/></svg>',surveys:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9.5 21v-5h5v5"/></svg>',grants:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>',funding:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>',star:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.3l6.5-.9z"/></svg>',book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',globe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',news:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>'};
 function surveyOf(a){return a.survey||'INHS';}
@@ -540,28 +632,28 @@ var full='0 0 '+GEO.w+' '+GEO.h;
 var zoom,loc;
 if(k==='us_senate'){zoom=svgmap('us_house','ALL',full,'loc');loc='';}else{zoom=svgmap(k,num,GEO.chambers[k][num].vb.join(' '),'zoom');loc=svgmap(k,num,full,'loc');}
 var rep=(REPS[k]||{})[num];
-var repLine=(k==='us_senate')?'Both U.S. Senators represent the whole state':(rep?esc(rep.name)+(rep.party?' ('+rep.party+')':''):'Officeholder: verify');
+var repLine=(k==='us_senate')?'Both U.S. Senators represent the whole state':(rep?esc(rep.name)+(rep.party?' ('+rep.party+')':''):'Officeholder to be verified.');
 var title=(k==='us_senate')?'U.S. Senate':(clabel(k)+' District '+num);
 var subtitle=(survey==='all')?'':SURV[survey];
 function ct(f){return scope.filter(f).length;}
 var tiles=(survey==='all')?[
 ['#13294B',scope.length,'PRI projects','projects'],
-['#FF5F05',new Set(matched.map(surveyOf)).size,'surveys active','surveys'],
-['#007E8E',ct(function(a){return kindOf(a)==='grants';}),'active grants','grants'],
+['#007E8E',new Set(matched.map(surveyOf)).size,'surveys active','surveys'],
+['#C84113',ct(function(a){return kindOf(a)==='grants';}),'active grants','grants'],
 ['#006230','$\\u2014','10-yr funding','funding'],
 ['#4877B8',ct(function(a){return kindOf(a)==='publications';}),'publications','book'],
-['#6a1f4d',ct(function(a){return kindOf(a)==='outreach';}),'community science','people'],
+['#4A4C4B',ct(function(a){return kindOf(a)==='outreach';}),'community science','people'],
 ['#7a4a1e',ct(function(a){return a.scope==='statewide';}),'statewide programs','globe'],
 ['#1c3a66',ct(function(a){return a.scope==='sited';}),'local projects','pin']
 ]:[
 ['#13294B',ct(function(a){return kindOf(a)==='projects';}),'projects','projects'],
-['#FF5F05',ct(function(a){return kindOf(a)==='grants';}),'active grants','grants'],
-['#007E8E',ct(function(a){return kindOf(a)==='publications';}),'publications','book'],
+['#C84113',ct(function(a){return kindOf(a)==='grants';}),'active grants','grants'],
+['#4877B8',ct(function(a){return kindOf(a)==='publications';}),'publications','book'],
 ['#006230','$\\u2014','10-yr funding','funding'],
-['#4877B8',ct(function(a){return kindOf(a)==='outreach';}),'community science','people'],
+['#4A4C4B',ct(function(a){return kindOf(a)==='outreach';}),'community science','people'],
 ['#6a1f4d',ct(function(a){return a.type==='Program';}),'programs','surveys'],
 ['#7a4a1e',ct(function(a){return a.scope==='sited';}),'local projects','pin'],
-['#1c3a66',ct(function(a){return kindOf(a)==='news';}),'news items','news']
+['#707372',ct(function(a){return kindOf(a)==='news';}),'news items','news']
 ];
 function rank(a){return (a.featured?100:0)+(a.priority||0)+(a.scope==='sited'?5:0);}
 var hi=scope.slice().sort(function(a,b){return rank(b)-rank(a);}).slice(0,5);var topItem=hi[0];
@@ -587,18 +679,23 @@ H+='</div>';
 if(scope.length>hi.length){H+='<div class="ho-more">+ '+(scope.length-hi.length)+' more projects in this district \\u2014 see the full interactive profile online.</div>';}
 H+='</div>';
 }
-H+='<div class="ho-foot"><div class="c"><b>Prairie Research Institute</b> \\u00b7 University of Illinois<br>615 E. Peabody Dr., Champaign, IL 61820 \\u00b7 configure-me@example.edu \\u00b7 217-333-5111<br>Uniting INHS \\u00b7 ISGS \\u00b7 ISWS \\u00b7 ISAS \\u00b7 ISTC</div>';
+H+='<div class="ho-foot"><div class="c"><b>Prairie Research Institute</b> \\u00b7 University of Illinois<br>615 E. Peabody Dr., Champaign, IL 61820 \\u00b7 configure-me@example.edu \\u00b7 217-333-5111<br>Uniting INHS \\u00b7 ISGS \\u00b7 ISWS \\u00b7 ISAS \\u00b7 ISTC<br>__CREDIT__</div>';
 H+='<a class="ho-foot-url" href="https://www.prairie.illinois.edu">prairie.illinois.edu</a>';
 H+='<div class="ho-qr"><span class="qrcap">Scan for the<br>live profile</span><img class="qrimg" src="assets/PRI-QR.png" alt="Scan for the interactive district profile"></div></div>';
 document.getElementById('ho-body').innerHTML=H;
 document.querySelector('.ho-sheet').style.setProperty('--acc',(survey==='all')?'#FF5F05':(SURVCOL[survey]||'#FF5F05'));
-document.title='PRI handout: '+title;
+document.title='PRI District Tracker: '+title;
 (function(){function clean(){var h=document.querySelector('.ho-lh ilw-header');if(h&&h.shadowRoot){var t=h.shadowRoot.querySelector('.menu-toggle');if(t)t.style.display='none';['.menu','.nav'].forEach(function(s){var e=h.shadowRoot.querySelector(s);if(e)e.style.display='none';});}['#onetrust-consent-sdk','#onetrust-banner-sdk','.onetrust-pc-dark-filter','#ot-sdk-btn-floating','#onetrust-pc-sdk'].forEach(function(s){var ns=document.querySelectorAll(s);for(var i=0;i<ns.length;i++)ns[i].remove();});}clean();var n=0,iv=setInterval(function(){clean();if(++n>150)clearInterval(iv);},60);})();
 </script>"""
+HANDOUT_APP = HANDOUT_APP.replace("/*SURVEYS*/", pri_data.survey_js())
+HANDOUT_APP = HANDOUT_APP.replace("__CREDIT__", CREDIT)
 HANDOUT_HEAD = ('<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-                '<title>PRI District handout</title>')
+                '<title>PRI District Tracker: District Profile</title>')
 handout_html = ("<!doctype html><html lang=\"en\"><head>" + HEAD_ASSETS_INLINE + GF + HANDOUT_CSS + "</head><body>"
                 + HANDOUT_BODY + data_script + HANDOUT_APP + COOKIE_KILL + "</body></html>")
+# One product name, one suffix per page (Q-17, PDT-21).
+handout_html = handout_html.replace("<title>PRI District Tracker</title>",
+                                    "<title>PRI District Tracker: District Profile</title>", 1)
 with open(os.path.join(PROJ, "handout.html"), "w", encoding="utf-8") as f:
     f.write(handout_html)
 
@@ -634,77 +731,84 @@ if _qr_uri:
 handout_doc_js = json.dumps(handout_doc).replace("</", "<\\/")
 
 KIT_CSS = r"""<style>
-.kit-tabs{display:flex;gap:2px;background:#0e1f3a;padding:0 clamp(14px,4vw,40px);position:sticky;top:0;z-index:40;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.kit-tabs{display:flex;gap:2px;background:var(--blue-deep);padding:0 clamp(14px,4vw,40px);position:sticky;top:0;z-index:40;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .kit-tab{appearance:none;border:0;background:transparent;color:#b9c4d6;font:600 14px/1 'Source Sans 3','Source Sans Pro',Arial,sans-serif;padding:13px 20px;cursor:pointer;border-bottom:3px solid transparent}
 .kit-tab:hover{color:#fff}
-.kit-tab.on{color:#fff;border-bottom-color:#FF5F05}
-.kit-wrap{max-width:1000px;margin:0 auto;padding:26px clamp(16px,4vw,40px) 60px}
+.kit-tab.on{color:#fff;border-bottom-color:var(--orange)}
+.kit-wrap{max-width:1060px;margin:0 auto;padding:26px 26px 60px}
 .kit-wrap h1{font-family:'Montserrat',Arial,sans-serif;color:#13294B;font-size:26px;margin:0 0 4px}
-.kit-wrap .lead{color:#5b6069;margin:0 0 22px;font-size:15px}
-.kit-note{background:#fff8ef;border:1px solid #f2d9b3;border-radius:8px;padding:11px 15px;font-size:13.5px;color:#7a5312;margin:0 0 22px}
-.kadd-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;background:#fff;border:1px solid #e3e6ea;border-radius:12px;padding:20px 22px}
+.kit-wrap .lead{color:var(--storm-dark);margin:0 0 22px;font-size:15px}
+.hint{display:block;font-size:12px;color:var(--storm-dark);margin-top:3px}
+.ck{display:flex;align-items:center;gap:7px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+td.empty{text-align:center;color:var(--storm);padding:26px}
+.kit-note{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-text);border-radius:var(--radius-md);padding:11px 15px;font-size:13px;color:#7a5312;margin:0 0 22px}
+.kadd-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-dialog);padding:20px 22px}
 .kadd-grid .f{display:flex;flex-direction:column;gap:4px}
-.kadd-grid .f.full{grid-column:1/3}
-.kadd-grid label{font-size:11.5px;font-weight:700;color:#5b6069;text-transform:uppercase;letter-spacing:.03em}
-.kadd-grid input,.kadd-grid select,.kadd-grid textarea{padding:8px 10px;border:1px solid #dfe1e5;border-radius:8px;font:inherit}
+.kadd-grid .f.full{grid-column:1 / -1}
+.kadd-grid label{font-size:11px;font-weight:700;color:var(--storm-dark);text-transform:uppercase;letter-spacing:.03em}
+.kadd-grid input,.kadd-grid select,.kadd-grid textarea{padding:8px 10px;border:1px solid var(--field);border-radius:var(--radius-md);font:inherit}
 .kadd-grid textarea{resize:vertical;min-height:52px}
-.kadd-grid .sec{grid-column:1/3;font-weight:700;color:#13294B;border-top:1px solid #eee;padding-top:12px;font-size:13px}
-.kadd-grid .ck{flex-direction:row;align-items:center;gap:8px;font-weight:600;text-transform:none;color:#23272c;font-size:14px}
+.kadd-grid .sec{grid-column:1 / -1;font-weight:700;color:#13294B;border-top:1px solid #eee;padding-top:12px;font-size:13px}
+.kadd-grid .ck{flex-direction:row;align-items:center;gap:8px;font-weight:600;text-transform:none;color:var(--ink);font-size:14px}
 .kadd-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 8px;align-items:center}
-.kbtn{border:0;border-radius:8px;padding:10px 18px;font:600 14px/1 inherit;cursor:pointer}
-.kbtn.pri{background:#FF5F05;color:#fff}.kbtn.dk{background:#13294B;color:#fff}
-.kbtn.gh{background:#fff;border:1px solid #dfe1e5;color:#23272c}
-.kbtn:disabled{opacity:.5;cursor:default}
-.kstaged{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ea;border-radius:12px;overflow:hidden;margin-top:8px}
-.kstaged th,.kstaged td{text-align:left;padding:9px 12px;border-bottom:1px solid #eee;font-size:13.5px}
-.kstaged th{background:#fafbfc;font-size:11px;text-transform:uppercase;color:#5b6069;letter-spacing:.04em}
+.kstaged{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:var(--radius-dialog);overflow:hidden;margin-top:8px}
+.kstaged th,.kstaged td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-table-cell)}
+.kstaged th{background:#FAFBFC;font-size:var(--fs-table-head);text-transform:uppercase;color:var(--storm);letter-spacing:.05em}
 .kstaged tr:last-child td{border-bottom:0}
-.kstaged .svy{font-weight:700;font-size:11px;color:#fff;border-radius:4px;padding:2px 6px;background:#13294B}
-.kx{border:1px solid #dfe1e5;background:#fff;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:12.5px}
-.kcount{color:#5b6069;font-size:13px}
+.kstaged .svy{font-weight:700;font-size:11px;color:#fff;border-radius:var(--radius-xs);padding:2px 6px;background:#13294B}
+.kx{border:1px solid var(--line);background:#fff;border-radius:var(--radius-sm);padding:3px 9px;cursor:pointer;font-size:12px}
+.kcount{color:var(--storm-dark);font-size:13px}
 .kb-flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0 26px}
-.kb-step{flex:1 1 190px;background:#fff;border:1px solid #e3e6ea;border-top:4px solid #FF5F05;border-radius:10px;padding:14px 16px;position:relative}
+.kb-step{flex:1 1 190px;background:#fff;border:1px solid var(--line);border-top:4px solid #FF5F05;border-radius:var(--radius-lg);padding:14px 16px;position:relative}
 .kb-step h3{margin:0 0 5px;font-family:'Montserrat',Arial,sans-serif;font-size:15px;color:#13294B}
-.kb-step p{margin:0;font-size:13px;color:#4b5158;line-height:1.45}
+.kb-step p{margin:0;font-size:13px;color:var(--storm-dark);line-height:1.45}
 .kb-step .kb-n{position:absolute;top:-13px;left:14px;width:24px;height:24px;border-radius:50%;background:#13294B;color:#fff;font:700 13px/24px 'Montserrat',sans-serif;text-align:center}
-.kb-arrow{display:flex;align-items:center;color:#FF5F05;font-size:26px;font-weight:700}
-@media(max-width:760px){.kb-arrow{transform:rotate(90deg)}.kadd-grid,.kb-flow{grid-template-columns:1fr}}
+.kb-arrow{display:flex;align-items:center;color:var(--il-altgeld);font-size:26px;font-weight:700}
+@media(max-width:820px){.kb-arrow{transform:rotate(90deg)}.kadd-grid,.kb-flow{grid-template-columns:1fr}
+  .kit-wrap{padding-left:16px;padding-right:16px}}
 .kb-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
-.kb-card{background:#fff;border:1px solid #e3e6ea;border-radius:12px;padding:18px 20px}
-.kb-card h3{margin:0 0 8px;font-family:'Montserrat',Arial,sans-serif;color:#13294B;font-size:16px}
-.kb-card ul{margin:8px 0 0;padding-left:18px}.kb-card li{margin:4px 0;font-size:13.5px;color:#3a3f45}
-.kb-card p{font-size:13.5px;color:#3a3f45;line-height:1.5;margin:0 0 8px}
-.kb-tag{display:inline-block;background:#eef2f7;color:#13294B;border-radius:5px;padding:1px 7px;font:600 12px/1.6 monospace}
-@media(max-width:760px){.kb-cards{grid-template-columns:1fr}}
+.kb-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-dialog);padding:18px 20px}
+.kb-card h3{margin:0 0 8px;font-family:'Montserrat',Arial,sans-serif;color:#13294B;font-size:15px}
+.kb-card ul{margin:8px 0 0;padding-left:18px}.kb-card li{margin:4px 0;font-size:13px;color:var(--storm-dark)}
+.kb-card p{font-size:13px;color:var(--storm-dark);line-height:1.5;margin:0 0 8px}
+.kb-tag{display:inline-block;background:#eef2f7;color:#13294B;border-radius:var(--radius-sm);padding:1px 7px;font:600 12px/1.6 monospace}
+@media(max-width:820px){.kb-cards{grid-template-columns:1fr}}
+.tscroll{overflow-x:auto}
 </style>"""
+KIT_CSS = KIT_CSS.replace("<style>", "<style>" + ui_tokens.tokens_css(), 1)
+KIT_CSS = KIT_CSS.replace("</style>", buttons_css() + ui_dialog.DIALOG_CSS + "</style>")
 
 KIT_TABBAR = ('<div class="kit-tabs">'
-              '<button class="kit-tab on" data-tab="explore">Explore the tracker</button>'
-              '<button class="kit-tab" data-tab="add">Add data</button>'
-              '<button class="kit-tab" data-tab="backend">How the data works</button>'
+              '<button class="kit-tab on" data-tab="explore">Explore the Tracker</button>'
+              '<button class="kit-tab" data-tab="add">Add Data</button>'
+              '<button class="kit-tab" data-tab="backend">How the Data Works</button>'
               '</div>')
 
+# The Status list is fixed everywhere (Q-16), so the Kit bakes the Console's in.
+STATUS_OPTIONS = "".join('<option>%s</option>' % s for s in pri_data.STATUSES)
+
 KIT_ADD = """<div class="kit-wrap">
-<h1>Add data to the tracker</h1>
+<h1>Add Data to the Tracker</h1>
 <p class="lead">Fill this in for a project, grant, publication, program, or community-science effort.
-Add as many as you like, then <b>Export CSV</b> and send the file to whoever manages the data &mdash; they
+Add as many as you like, then <b>Export CSV</b> and send the file to whoever manages the data. They
 load it into the Data Console, which date-stamps it, sets the display timer, and figures out the districts.</p>
-<div class="kit-note"><b>Nothing here changes the live tracker.</b> This just builds a clean spreadsheet to hand off.
+<div class="notice warn kit-note"><b>Nothing here changes the live tracker.</b> The form builds a clean spreadsheet to hand off.
 For a mapped location, give <b>latitude &amp; longitude</b> (or a county) and the manager's tool assigns the
-legislative districts automatically &mdash; you don't have to look them up.</div>
+legislative districts automatically, so you do not have to look them up.</div>
 <div class="kadd-grid">
   <div class="f"><label>Survey</label><select id="kadd_survey"><option>INHS</option><option>ISGS</option><option>ISWS</option><option>ISAS</option><option>ISTC</option></select></div>
   <div class="f"><label>Type</label><select id="kadd_type"><option>Program</option><option>Project</option><option>Facility</option><option>Grant</option><option>Publication</option><option>News</option><option>Community science</option></select></div>
   <div class="f full"><label>Title</label><input id="kadd_title" placeholder="e.g. Mahomet Aquifer water-quality study"></div>
-  <div class="f full"><label>Summary &mdash; one-line blurb for the card</label><textarea id="kadd_summary"></textarea></div>
-  <div class="f full"><label>Description &mdash; the fuller text shown when someone clicks in</label><textarea id="kadd_description"></textarea></div>
+  <div class="f full"><label>Summary</label><span class="hint">One line for the card.</span><textarea id="kadd_summary"></textarea></div>
+  <div class="f full"><label>Description</label><span class="hint">The fuller text shown when someone opens the record.</span><textarea id="kadd_description"></textarea></div>
   <div class="f"><label>Lead / contact</label><input id="kadd_lead"></div>
-  <div class="f"><label>Status</label><input id="kadd_status" placeholder="Ongoing, Active, 2024-2026&hellip;"></div>
+  <div class="f"><label>Status</label><select id="kadd_status">__STATUS_OPTIONS__</select></div>
   <div class="f"><label>Funder / partners</label><input id="kadd_funder"></div>
   <div class="f"><label>Program area</label><input id="kadd_program"></div>
   <div class="f"><label>Topic</label><input id="kadd_topic"></div>
   <div class="f"><label>Link (URL)</label><input id="kadd_url"></div>
-  <div class="f full"><label>Photo URL (optional &mdash; shows in the pop-up &amp; handout)</label><input id="kadd_image"></div>
+  <div class="f full"><label>Photo URL</label><span class="hint">Optional. Shows in the pop-up and on the handout.</span><input id="kadd_image"></div>
   <div class="sec">Where is it? (for the map)</div>
   <div class="f"><label>Scope</label><select id="kadd_scope"><option value="statewide">statewide (shows in every district)</option><option value="sited">sited (a specific place)</option><option value="regional">regional</option><option value="external">external (outside Illinois)</option></select></div>
   <div class="f"><label>Location text</label><input id="kadd_location" placeholder="Havana, Mason Co."></div>
@@ -712,48 +816,50 @@ legislative districts automatically &mdash; you don't have to look them up.</div
   <div class="f"><label>Longitude</label><input id="kadd_longitude" placeholder="-88.21"></div>
   <div class="f"><label>County</label><input id="kadd_county"></div>
   <div class="f"><label>Keywords (; separated)</label><input id="kadd_keywords"></div>
-  <div class="f"><label>US House district(s)</label><input id="kadd_us_house" placeholder="leave blank to auto-fill"></div>
-  <div class="f"><label>IL Senate / IL House</label><input id="kadd_il_senate" placeholder="Senate"><input id="kadd_il_house" placeholder="House" style="margin-top:6px"></div>
+  <div class="f"><label>U.S. House district(s)</label><input id="kadd_us_house" placeholder="leave blank to auto-fill"></div>
+  <div class="f"><label>Illinois Senate / Illinois House</label><input id="kadd_il_senate" placeholder="Senate"><input id="kadd_il_house" placeholder="House" style="margin-top:6px"></div>
   <div class="f full"><label>Notes (for the data manager)</label><input id="kadd_notes"></div>
-  <div class="f full ck"><label class="ck"><input type="checkbox" id="kadd_featured"> Feature this one</label>
-    &nbsp;&nbsp;<label class="ck"><input type="checkbox" id="kadd_confirm"> District needs checking</label></div>
+  <div class="f full row"><label class="ck"><input type="checkbox" id="kadd_featured"> Feature this one</label>
+    <label class="ck"><input type="checkbox" id="kadd_confirm"> District needs checking</label></div>
 </div>
+<div class="notice err" id="kadd_notice" role="alert" hidden></div>
 <div class="kadd-actions">
-  <button class="kbtn pri" id="kadd_add">+ Add to list</button>
-  <button class="kbtn dk" id="kadd_export">Export CSV</button>
-  <button class="kbtn gh" id="kadd_clear">Clear list</button>
+  <button class="btn pri" id="kadd_add">Add to List</button>
+  <button class="btn dk" id="kadd_export">Export CSV</button>
+  <button class="btn gh" id="kadd_clear">Clear List</button>
   <span class="kcount" id="kadd_count"></span>
 </div>
-<table class="kstaged"><thead><tr><th>Survey</th><th>Title</th><th>Type</th><th>Where</th><th></th></tr></thead><tbody id="kadd_rows"></tbody></table>
+<div class="tscroll"><table class="kstaged"><thead><tr><th>Survey</th><th>Title</th><th>Type</th><th>Where</th><th></th></tr></thead><tbody id="kadd_rows"></tbody></table></div>
 </div>"""
+KIT_ADD = KIT_ADD.replace("__STATUS_OPTIONS__", STATUS_OPTIONS)
 
 KIT_BACKEND = """<div class="kit-wrap">
-<h1>How the data works</h1>
-<p class="lead">The tracker is driven by one master list of activities. Here's the path a new entry
-takes &mdash; and what it takes to run this live for everyone.</p>
+<h1>How the Data Works</h1>
+<p class="lead">The tracker is driven by one master list of activities. The path a new entry takes is below,
+with what it takes to run this live for everyone.</p>
 <div class="kb-flow">
-  <div class="kb-step"><span class="kb-n">1</span><h3>You collate</h3><p>Use the <b>Add data</b> tab to describe each activity and export a CSV. That's your job in the working group.</p></div>
+  <div class="kb-step"><span class="kb-n">1</span><h3>You collate</h3><p>Use the <b>Add Data</b> tab to describe each activity and export a CSV. That task belongs to the working group.</p></div>
   <div class="kb-arrow">&rarr;</div>
   <div class="kb-step"><span class="kb-n">2</span><h3>Data Console</h3><p>The data manager loads the CSV into a small tool that <b>date-stamps</b> each record, sets its <b>display timer</b>, and <b>auto-assigns districts</b> from lat/long.</p></div>
   <div class="kb-arrow">&rarr;</div>
-  <div class="kb-step"><span class="kb-n">3</span><h3>Master database</h3><p>Everything is stored in one place and <b>never deleted</b> &mdash; older items are just hidden when their timer runs out.</p></div>
+  <div class="kb-step"><span class="kb-n">3</span><h3>Master database</h3><p>Everything is stored in one place and <b>never deleted</b>. Older items are hidden when their timer runs out.</p></div>
   <div class="kb-arrow">&rarr;</div>
-  <div class="kb-step"><span class="kb-n">4</span><h3>The website</h3><p>The public tracker &amp; handouts show <b>only the current records</b> for each legislative district.</p></div>
+  <div class="kb-step"><span class="kb-n">4</span><h3>The website</h3><p>The public tracker and handouts show <b>only the current records</b> for each legislative district.</p></div>
 </div>
 <div class="kb-cards">
   <div class="kb-card"><h3>The display timer</h3>
-    <p>Every record has a <span class="kb-tag">show&nbsp;until</span> date. While it's in the future the record shows on the site; once it passes, the record drops off automatically &mdash; but stays in the database.</p>
+    <p>Every record has a <span class="kb-tag">show&nbsp;until</span> date. While that date is in the future the record shows on the site; once it passes, the record drops off the site and stays in the database.</p>
     <ul><li><b>Blank = evergreen:</b> shows until someone retires it (good for long-running programs).</li>
     <li><b>A date:</b> the item ages off on its own (good for news, one-off projects, grants).</li>
     <li><b>Retire:</b> hides something immediately without deleting it.</li></ul>
     <p>So the site always shows <b>current</b> work, and re-adding a record refreshes its clock.</p></div>
   <div class="kb-card"><h3>Putting it online (the backend)</h3>
-    <p>This runs on <b>standard PHP + MySQL</b> web hosting &mdash; no special software.</p>
-    <ul><li>Create a MySQL database and import <span class="kb-tag">sql/schema.sql</span>.</li>
+    <p>The tracker runs on <b>PHP and PostgreSQL</b>, hosted on the campus Radiant service.</p>
+    <ul><li>Create the PostgreSQL database and apply the schema from <span class="kb-tag">migrations/</span>.</li>
     <li>Upload the <span class="kb-tag">php/</span> folder and point the page at <span class="kb-tag">php/data.php</span>.</li>
     <li>The display timer then runs <b>live</b>, and everyone shares one database.</li>
-    <li>Data managers ingest on the host through an authenticated page &mdash; no files to email around.</li></ul>
-    <p>Until then, the local Data Console + this Kit do the same job on one computer.</p></div>
+    <li>Data managers ingest on the host through an authenticated page, with no files to email around.</li></ul>
+    <p>Until then, the local Data Console and this Kit do the same job on one computer.</p></div>
 </div>
 </div>"""
 
@@ -768,7 +874,7 @@ function openKitHandout(){
          survey:(document.getElementById('survey')||{}).value||'all'};
   var doc=HANDOUT_DOC.replace('__PRIQMARK__',JSON.stringify(q));
   var w=window.open('','_blank');
-  if(!w){alert('Please allow pop-ups to open the one-page handout.');return;}
+  if(!w){PriDialog.notify({title:'Pop-up Blocked',message:'The browser stopped the handout from opening. Allow pop-ups for this page, then try again.'});return;}
   w.document.open();w.document.write(doc);w.document.close();
 }
 // APP already wired #printBtn to a (missing) file; swap the node to drop that handler.
@@ -792,7 +898,7 @@ function render(){
   tb.innerHTML=rows.map(function(r,i){
     var where=r.scope==='statewide'?'statewide':(r.scope==='external'?'&mdash;':([r.us_house?'US '+r.us_house:'',r.location_text].filter(Boolean).join(' &middot; ')||r.county||'&mdash;'));
     return '<tr><td><span class="svy">'+esc(r.survey)+'</span></td><td><b>'+esc(r.title)+'</b></td><td>'+esc(r.type)+'</td><td>'+where+'</td><td><button class="kx" data-i="'+i+'">Remove</button></td></tr>';
-  }).join('')||'<tr><td colspan="5" style="text-align:center;color:#8a9099;padding:22px">No entries yet &mdash; fill the form and click <b>Add to list</b>.</td></tr>';
+  }).join('')||'<tr><td colspan="5" class="empty">No entries yet. Fill the form and select <b>Add to List</b>.</td></tr>';
   var c=document.getElementById('kadd_count');if(c)c.textContent=rows.length?(rows.length+' entr'+(rows.length===1?'y':'ies')+' ready to export'):'';
   try{localStorage.setItem(KEY,JSON.stringify(rows));}catch(e){}
 }
@@ -805,10 +911,14 @@ function collect(){
     il_house:val('kadd_il_house'),featured:chk('kadd_featured')?'yes':'no',confirm:chk('kadd_confirm')?'yes':'no',
     keywords:val('kadd_keywords'),notes:val('kadd_notes'),image:val('kadd_image'),activity_id:''};
 }
+function kNote(msg){var n=document.getElementById('kadd_notice');
+  if(!n)return;
+  if(msg){n.textContent=msg;n.hidden=false;}else{n.textContent='';n.hidden=true;}}
 var addB=document.getElementById('kadd_add');
 if(addB)addB.addEventListener('click',function(){
   var r=collect();
-  if(!r.title||!r.summary){alert('Please fill in at least a Title and a Summary.');return;}
+  if(!r.title||!r.summary){kNote('Fill in at least a title and a summary before adding the entry.');return;}
+  kNote('');
   rows.push(r);render();
   ['kadd_title','kadd_summary','kadd_description','kadd_lead','kadd_funder','kadd_program','kadd_topic','kadd_url','kadd_image','kadd_location','kadd_latitude','kadd_longitude','kadd_county','kadd_keywords','kadd_notes','kadd_us_house','kadd_il_senate','kadd_il_house'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   var f=document.getElementById('kadd_featured'),cf=document.getElementById('kadd_confirm');if(f)f.checked=false;if(cf)cf.checked=false;
@@ -818,11 +928,17 @@ document.getElementById('kadd_rows').addEventListener('click',function(e){
   var b=e.target.closest('[data-i]');if(!b)return;rows.splice(+b.getAttribute('data-i'),1);render();
 });
 var clr=document.getElementById('kadd_clear');
-if(clr)clr.addEventListener('click',function(){if(rows.length&&confirm('Clear all '+rows.length+' entries?')){rows=[];render();}});
+if(clr)clr.addEventListener('click',function(){
+  if(!rows.length)return;
+  PriDialog.confirm({title:'Clear the List',
+    message:'Remove all '+rows.length+' entries from this list? Nothing has been sent anywhere, so this only clears what you typed.',
+    okLabel:'Clear List',danger:true}).then(function(ok){if(ok){rows=[];kNote('');render();}});
+});
 function csvCell(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}
 var exp=document.getElementById('kadd_export');
 if(exp)exp.addEventListener('click',function(){
-  if(!rows.length){alert('Add at least one entry first.');return;}
+  if(!rows.length){kNote('Add at least one entry to the list before exporting.');return;}
+  kNote('');
   var lines=[INTAKE_COLS.map(csvCell).join(',')];
   rows.forEach(function(r){lines.push(INTAKE_COLS.map(function(c){return csvCell(r[c]);}).join(','));});
   var blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
@@ -834,6 +950,9 @@ render();
 })();
 </script>"""
 KIT_JS = KIT_JS.replace("__INTAKE_COLS__", json.dumps(INTAKE_COLS)).replace("__HANDOUT_DOC__", handout_doc_js)
+# The Kit is the only generated page that asks the reader a question, so it carries
+# PriDialog (PDT-37). Prepended, because the handlers above call it.
+KIT_JS = KIT_JS.replace("<script>", "<script>" + ui_dialog.DIALOG_JS, 1)
 
 kit_html = ("<!doctype html><html lang=\"en\"><head>" + HEAD_ASSETS_INLINE + GF + MYCSS + KIT_CSS + "</head><body>"
             + PRI_HEADER + KIT_TABBAR
@@ -842,6 +961,9 @@ kit_html = ("<!doctype html><html lang=\"en\"><head>" + HEAD_ASSETS_INLINE + GF 
             + '<div id="kit-backend" class="kit-panel" hidden>' + KIT_BACKEND + '</div>'
             + PRI_FOOTER + "\n" + PRI_SCRIPTS + "\n"
             + '<script>' + DATA_JS + '</script>' + APP + COOKIE_KILL + KIT_JS + "</body></html>")
+# One product name, one suffix per page (Q-17, PDT-21).
+kit_html = kit_html.replace("<title>PRI District Tracker</title>",
+                            "<title>PRI District Tracker: Working Group Kit</title>", 1)
 with open(os.path.join(PROJ, "PRI-Tracker-Kit.html"), "w", encoding="utf-8") as f:
     f.write(kit_html)
 
@@ -850,5 +972,9 @@ print("Reps:", {k: len(v) for k, v in REPS.items()})
 print("Freshness: %d shown / %d hidden (expired show_until) of %d total on %s"
       % (len(ACT), _HIDDEN, len(_ACT_ALL), pri_data.today_iso()))
 print("Wrote:", OUT, "(%.0f KB)" % (os.path.getsize(OUT) / 1024))
+# The hosted back office links these; the Console gets them stamped in (Q-19).
+_fonts = ui_fonts.write_fonts_css()
+print("Wrote:", _fonts, "(%.0f KB, campus faces for the back office)"
+      % (os.path.getsize(_fonts) / 1024))
 _kit = os.path.join(PROJ, "PRI-Tracker-Kit.html")
 print("Wrote:", _kit, "(%.0f KB, self-contained distributable)" % (os.path.getsize(_kit) / 1024))

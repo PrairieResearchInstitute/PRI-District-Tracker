@@ -4,8 +4,6 @@ the loader drops a field nobody notices. These checks hold the five together wit
 database:
 
   migrations/*.pgsql.sql     PostgreSQL schema (tools/migrate.php)
-  migrations/*.mysql.sql     MySQL schema
-  sql/schema.sql             MySQL in one file, for a phpMyAdmin import
   includes/activities.php    activity_columns(), what the PHP layer writes
   scripts/pri_sql.py         COLUMNS, what the export writes
 
@@ -63,13 +61,6 @@ class FiveListsAgree(unittest.TestCase):
     def test_pgsql_migrations_hold_every_column(self):
         self.assertEqual(sorted(engine_columns("pgsql")), sorted(self.canon + ["version"]))
 
-    def test_mysql_migrations_hold_every_column(self):
-        self.assertEqual(sorted(engine_columns("mysql")), sorted(self.canon + ["version"]))
-
-    def test_one_file_mysql_schema_matches_the_migrations(self):
-        with open(os.path.join(ROOT, "sql", "schema.sql"), encoding="utf-8") as f:
-            self.assertEqual(sorted(create_columns(f.read())), sorted(engine_columns("mysql")))
-
     def test_the_export_writes_the_same_columns_in_the_same_order(self):
         self.assertEqual([c for c, _k in pri_sql.COLUMNS], self.canon)
 
@@ -80,14 +71,12 @@ class FiveListsAgree(unittest.TestCase):
         fields = {k for a in acts for k in a}
         self.assertEqual(sorted(fields - set(self.canon)), [])
 
-    def test_every_migration_has_its_twin(self):
-        names = {}
+    def test_no_migration_carries_a_mysql_twin(self):
+        """Q-11, 2026-10-20: one engine. A .mysql.sql twin is a file nothing applies."""
         for path in glob.glob(os.path.join(MIG, "*.sql")):
-            m = re.match(r"^(\d{4}_[a-z0-9_]+?)(?:\.(mysql|pgsql))?\.sql$", os.path.basename(path))
-            self.assertIsNotNone(m, "badly named migration %s" % path)
-            names.setdefault(m.group(1), set()).add(m.group(2) or "both")
-        for name, engines in names.items():
-            self.assertTrue(engines in ({"both"}, {"mysql", "pgsql"}), "%s has %s" % (name, sorted(engines)))
+            base = os.path.basename(path)
+            m = re.match(r"^(\d{4}_[a-z0-9_]+?)(?:\.(pgsql))?\.sql$", base)
+            self.assertIsNotNone(m, "badly named or non-PostgreSQL migration %s" % base)
 
 
 class PostgresDialect(unittest.TestCase):
@@ -96,8 +85,7 @@ class PostgresDialect(unittest.TestCase):
            "ingested_at": "2026-07-01", "show_until": "", "historic": True, "region": "Chicago metro"}
 
     def setUp(self):
-        self.pg = pri_sql.statements([self.REC], "pgsql")[0]
-        self.my = pri_sql.statements([self.REC], "mysql")[0]
+        self.pg = pri_sql.statements([self.REC])[0]
 
     def test_upsert_is_on_conflict(self):
         self.assertIn("ON CONFLICT (id) DO UPDATE SET", self.pg)
@@ -120,15 +108,11 @@ class PostgresDialect(unittest.TestCase):
         self.assertIn("'2026-07-01 00:00:00'", self.pg)
         self.assertRegex(self.pg, r"'2026-07-01 00:00:00', NULL, NULL, 'Chicago metro', TRUE\)")
 
-    def test_mysql_output_keeps_its_own_form(self):
-        self.assertIn("ON DUPLICATE KEY UPDATE", self.my)
-        self.assertIn("`group`", self.my)
-        self.assertIn("`lead`", self.my)          # LEAD is reserved from MySQL 8.0.2
-        self.assertIn("'O\\'Brien \\\\ a back\\\\slash'", self.my)
-
-    def test_unknown_dialect_is_refused(self):
-        with self.assertRaises(ValueError):
-            pri_sql.statements([self.REC], "oracle")
+    def test_the_export_carries_no_mysql_form(self):
+        """Q-11, 2026-10-20: one engine, so no back-quotes and no VALUES() upsert."""
+        self.assertNotIn("`", self.pg)
+        self.assertNotIn("ON DUPLICATE KEY", self.pg)
+        self.assertNotIn("utf8mb4", self.pg)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,22 @@
 # tier; uncomment the two volume blocks and set the path the app writes.
 name: pri-district-tracker
 
+# NCSA CA certificate (Radiant audit M3). With sslmode verify-full every service
+# that connects to PostgreSQL verifies the server certificate against pg-ca.crt,
+# the CA file the Radiant Move Guide copies beside this file, mounted read-only
+# at /run/secrets/pg-ca.crt. The start fails when pg-ca.crt is missing instead of
+# Docker creating an empty folder in its place.
+# The tier env files set PGSSLROOTCERT to that path (settings stay in env files,
+# never in an environment: block here); libpq under pdo_pgsql reads it and,
+# with PGSSLMODE verify-full, checks the certificate chain and the host name.
+x-pg-ca-volume: &pg-ca-volume
+  type: bind
+  source: ./pg-ca.crt
+  target: /run/secrets/pg-ca.crt
+  read_only: true
+  bind:
+    create_host_path: false
+
 services:
   pri-district-tracker-test:
     image: pri-district-tracker:${TEST_TAG:?set TEST_TAG to the tag printed by tag.js}
@@ -22,6 +38,8 @@ services:
       retries: 3
     # volumes:
     #   - pri-district-tracker-test-uploads:/var/www/html/uploads
+    volumes:
+      - *pg-ca-volume
     networks:
       - proxy
 
@@ -38,6 +56,8 @@ services:
       retries: 3
     # volumes:
     #   - pri-district-tracker-live-uploads:/var/www/html/uploads
+    volumes:
+      - *pg-ca-volume
     networks:
       - proxy
 

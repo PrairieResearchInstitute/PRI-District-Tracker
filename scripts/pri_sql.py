@@ -1,30 +1,28 @@
 """Export the local database of record (data/activities.json) to an SQL import file
-whose columns line up 1:1 with the hosted schema (migrations/, sql/schema.sql).
-Idempotent on the host: re-importing refreshes rather than duplicates.
+whose columns line up 1:1 with the hosted schema (migrations/). Idempotent on the
+host: re-importing refreshes rather than duplicates.
 
-Two dialects, because the hosted layer runs on either engine (includes/db.php DB_DRIVER):
+One dialect, PostgreSQL. The owner retired MySQL on 2026-10-20 (Q-11): the app has
+run on PostgreSQL since D-016 and nothing is to be kept selectable.
 
-    py scripts/pri_sql.py                    -> sql/data.sql        MySQL, the default
-    py scripts/pri_sql.py --dialect pgsql    -> sql/data.pgsql.sql  PostgreSQL
+    py scripts/pri_sql.py    -> sql/data.sql   PostgreSQL
     --source <file>  read another copy of activities.json;  --out <file>  write elsewhere
 
-  MySQL       INSERT ... ON DUPLICATE KEY UPDATE c=VALUES(c); `group` and `lead`
-              back-quoted (LEAD is reserved from MySQL 8.0.2); backslash escapes
-  PostgreSQL  INSERT ... ON CONFLICT (id) DO UPDATE SET c=EXCLUDED.c; "group"
-              double-quoted; quotes doubled, backslashes literal; TRUE/FALSE
+INSERT ... ON CONFLICT (id) DO UPDATE SET c = EXCLUDED.c. "group" is quoted because
+it is reserved; quotes are doubled and backslashes stay literal; booleans are
+TRUE/FALSE. A blank show_until is NULL, which is what evergreen means.
 
 The canonical record keys are identical across JSON, the local admin and SQL, so
 nothing has to be renamed as data moves from the local tool to the hosted database.
 The verified way to fill PostgreSQL is tools/load-pg.php, which compares every row
-after loading; the PostgreSQL file here is the same data for psql, and the PHP test
-suite checks that the two paths produce identical rows. Pure stdlib.
+after loading; the file here is the same data for psql, and the PHP test suite
+checks that the two paths produce identical rows. Pure stdlib.
 """
 import json, os, sys
 import pri_data as db
 
 SQL_DIR = os.path.join(db.PROJ, "sql")
-DIALECTS = ("mysql", "pgsql")
-RESERVED = {"mysql": {"group", "lead"}, "pgsql": {"group"}}
+RESERVED = {"group"}        # reserved in PostgreSQL, so it is quoted
 
 # (json_key == sql column, kind).  kind: str | text | bool | num | date | dt | json
 COLUMNS = [
@@ -46,77 +44,63 @@ COLUMNS = [
     ("region", "str"), ("historic", "bool"),
 ]
 
-
-def _ident(col, dialect):
-    if col not in RESERVED[dialect]:
-        return col
-    return "`%s`" % col if dialect == "mysql" else '"%s"' % col
+def _ident(col):
+    return '"%s"' % col if col in RESERVED else col
 
 
-def _q(s, dialect="mysql"):
-    s = str(s)
-    if dialect == "pgsql":
-        return "'" + s.replace("'", "''") + "'"
-    return "'" + s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "'"
+def _q(s):
+    return "'" + str(s).replace("'", "''") + "'"
 
 
-def _cell(rec, key, kind, dialect="mysql"):
+def _cell(rec, key, kind):
     v = rec.get(key, None)
     if kind in ("str", "text"):
-        return _q(v or "", dialect)
+        return _q(v or "")
     if kind == "bool":
-        if dialect == "pgsql":
-            return "TRUE" if v else "FALSE"
-        return "1" if v else "0"
+        return "TRUE" if v else "FALSE"
     if kind == "num":
         s = str(v).strip() if v not in (None, "") else ""
         return s if s else "NULL"
     if kind == "date":
         s = str(v or "").strip()
-        return _q(s, dialect) if s else "NULL"   # blank show_until = evergreen = NULL (never expires)
+        return _q(s) if s else "NULL"   # blank show_until = evergreen = NULL (never expires)
     if kind == "dt":
         s = str(v or "").strip()
         if not s:
             return "NULL"
-        return _q(s + " 00:00:00" if len(s) == 10 else s, dialect)
+        return _q(s + " 00:00:00" if len(s) == 10 else s)
     if kind == "json":
-        return _q(json.dumps(v if isinstance(v, list) else []), dialect)
+        return _q(json.dumps(v if isinstance(v, list) else []))
     return "NULL"
 
 
-def statements(acts, dialect="mysql"):
-    """One upsert per record, in the given dialect."""
-    if dialect not in DIALECTS:
-        raise ValueError("dialect must be one of %s" % ", ".join(DIALECTS))
-    cols = [_ident(c, dialect) for c, _k in COLUMNS]
-    if dialect == "pgsql":
-        sets = ["%s=EXCLUDED.%s" % (c, c) for c in cols if c != "id"] + ["version=activities.version+1"]
-        tail = "ON CONFLICT (id) DO UPDATE SET " + ", ".join(sets)
-    else:
-        sets = ["%s=VALUES(%s)" % (c, c) for c in cols if c != "id"] + ["version=version+1"]
-        tail = "ON DUPLICATE KEY UPDATE " + ", ".join(sets)
+def statements(acts):
+    """One upsert per record."""
+    cols = [_ident(c) for c, _k in COLUMNS]
+    sets = ["%s=EXCLUDED.%s" % (c, c) for c in cols if c != "id"] + ["version=activities.version+1"]
+    tail = "ON CONFLICT (id) DO UPDATE SET " + ", ".join(sets)
     out = []
     for a in acts:
         if not (a.get("survey") or "").strip():
             a = {**a, "survey": "INHS"}   # match the front end's surveyOf default; keep the DB clean
-        vals = ", ".join(_cell(a, k, kind, dialect) for (k, kind) in COLUMNS)
-        out.append("INSERT INTO activities (%s) VALUES (%s)\n  %s;" % (", ".join(cols), vals, tail))
+        vals = ", ".join(_cell(a, k, kind) for (k, kind) in COLUMNS)
+        out.append("INSERT INTO activities (%s) VALUES (%s)" % (", ".join(cols), vals)
+                   + chr(10) + "  " + tail + ";")
     return out
 
 
-def write_data_sql(path=None, dialect="mysql", source=None):
+def write_data_sql(path=None, source=None):
     """Write the import file; `source` is another copy of activities.json (read-only)."""
-    name = "data.sql" if dialect == "mysql" else "data.%s.sql" % dialect
     if path is None:
         os.makedirs(SQL_DIR, exist_ok=True)
-        path = os.path.join(SQL_DIR, name)
+        path = os.path.join(SQL_DIR, "data.sql")
     acts = db.load_db(source)["activities"]
-    lines = ["-- Generated from data/activities.json by scripts/pri_sql.py (%s)" % dialect,
-             "-- Import AFTER the schema (migrations/).  Re-running refreshes existing rows (upsert)."]
-    lines += ["SET NAMES utf8mb4;", ""] if dialect == "mysql" else ["SET client_encoding = 'UTF8';", ""]
-    lines += statements(acts, dialect)
+    lines = ["-- Generated from data/activities.json by scripts/pri_sql.py (PostgreSQL)",
+             "-- Import AFTER the schema (migrations/).  Re-running refreshes existing rows (upsert).",
+             "SET client_encoding = 'UTF8';", ""]
+    lines += statements(acts)
     with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(chr(10).join(lines) + chr(10))
     return path, len(acts)
 
 
@@ -128,9 +112,5 @@ def _arg(name, default=None):
 
 
 if __name__ == "__main__":
-    dialect = _arg("--dialect", "mysql")
-    if dialect not in DIALECTS:
-        print("Usage: py scripts/pri_sql.py [--dialect mysql|pgsql] [--source <activities.json>] [--out <file.sql>]")
-        sys.exit(2)
-    p, n = write_data_sql(path=_arg("--out"), dialect=dialect, source=_arg("--source"))
+    p, n = write_data_sql(path=_arg("--out"), source=_arg("--source"))
     print("Wrote %s (%d activities)" % (p, n))

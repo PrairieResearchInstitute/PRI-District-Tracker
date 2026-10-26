@@ -1,5 +1,22 @@
 {
-  "protected": ["config.local.json", "data/activities.json", "../../data/pri-district-tracker/backups"],
-  "generated": ["index.html", "handout.html", "PRI-Tracker-Kit.html", "data.js", "data/geo.json", "data/reps.json", "sql/data.sql", "reference/preview.html", "README.docx", "assets/vendor"],
+  "protected": [
+    "config.local.json",
+    "data/activities.json",
+    "../../data/pri-district-tracker/backups"
+  ],
+  "except": [],
+  "generated": [
+    "index.html",
+    "handout.html",
+    "PRI-Tracker-Kit.html",
+    "data.js",
+    "data/geo.json",
+    "data/reps.json",
+    "sql/data.sql",
+    "reference/preview.html",
+    "README.docx",
+    "assets/vendor",
+    "assets/fonts.css"
+  ],
   "reason": "data/activities.json is the database of record: change it only through the Data Console or scripts/pri_data.py, which guard against clobbering. ../../data/pri-district-tracker/backups (on the drive, named by dataFolder) holds the verified snapshots and the Studio's history; only backup_data.py and the Studio write there. config.local.json is written only by scripts/app_config.py (SETUP.bat). The generated files come from build_site.py, pri_sql.py, make_inset.py, make-readme.js and make_vendor.py (online only); edit their sources, never the outputs."
 }

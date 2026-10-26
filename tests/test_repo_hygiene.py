@@ -82,7 +82,7 @@ if __name__ == "__main__":
 ROOT_FILES = {
     # Named by C1
     "AGENTS.md", "CLAUDE.md", "README.md", "intent.md", "plan.md", "handoff.md",
-    "SETUP.bat",
+    "SETUP.bat", "Data Console.bat",
     # The owner's delivery rule: a README for people ships as .docx
     "README.docx",
     # Build, container and configuration
@@ -90,6 +90,8 @@ ROOT_FILES = {
     ".env.example", "config.template.json", "config.local.json",
     # Read by the build, the audit or the host
     "data-sources.yaml", "hardcoded-allow.json", "health.php",
+    # The credit line the gate checks for (D-031)
+    "NOTICE",
     # drez-php-core's sync manifest: which library version includes/core.php came from
     "drez-php-core.sync.json",
     # The deliverables themselves

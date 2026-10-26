@@ -58,6 +58,9 @@
  *      Drive, iCloud Drive or Box (db_sqlite_journal_mode()), and checks the
  *      mode took. db_close() folds the WAL into the main file with a
  *      TRUNCATE checkpoint and runs at shutdown; db_use() can forget a handle.
+ *  12. core_install_exception_handler() takes an optional page renderer, so an
+ *      app draws its 500 page in its own chrome (District Tracker PDT-14,
+ *      2026-10-18); the default page's title is "Error" (estate Q-33).
  */
 
 declare(strict_types=1);
@@ -111,10 +114,15 @@ function safe_return_to(?string $raw, array $allowed, string $fallback): string
  *
  * The detail goes to the server error log; the visitor gets a sentence. A
  * request that expects JSON gets JSON.
+ *
+ * $renderPage, when given, prints the HTML error page in the app's own chrome
+ * (its header, footer and stylesheet), so the 500 page follows the app's UI
+ * Elements spec. It is told nothing about the error. If it throws, the plain
+ * page below is printed instead.
  */
-function core_install_exception_handler(string $logLabel): void
+function core_install_exception_handler(string $logLabel, ?callable $renderPage = null): void
 {
-    set_exception_handler(function (Throwable $e) use ($logLabel): void {
+    set_exception_handler(function (Throwable $e) use ($logLabel, $renderPage): void {
         error_log($logLabel . ': ' . get_class($e) . ': ' . $e->getMessage()
             . ' in ' . $e->getFile() . ':' . $e->getLine());
         if (PHP_SAPI === 'cli') {
@@ -135,8 +143,19 @@ function core_install_exception_handler(string $logLabel): void
             exit;
         }
         header('Content-Type: text/html; charset=UTF-8');
-        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Something went wrong</title></head>'
-           . '<body><h1>Something went wrong</h1><p>The page stopped before it finished, and nothing was saved. '
+        if ($renderPage !== null) {
+            ob_start();
+            try {
+                $renderPage();
+                ob_end_flush();
+                exit;
+            } catch (Throwable $inner) {
+                ob_end_clean();
+                error_log($logLabel . ': error page renderer failed: ' . $inner->getMessage());
+            }
+        }
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Error</title></head>'
+           . '<body><h1>Error</h1><p>The page stopped before it finished, and nothing was saved. '
            . 'Try again in a moment.</p><p>If it keeps happening, tell the web person: the detail is in the '
            . 'server error log, with the time stamp of this attempt.</p></body></html>';
         exit;

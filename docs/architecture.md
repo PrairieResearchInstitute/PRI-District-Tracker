@@ -33,7 +33,7 @@ flowchart TD
     end
 
     subgraph hosted["Hosted (planned)"]
-        MYSQL[("MySQL or PostgreSQL<br/>includes/db.php DB_DRIVER")]
+        PGDB[("PostgreSQL<br/>includes/db.php")]
         PHP["php/data.php<br/>live freshness filter"]
         ADMIN["php/admin_ingest.php<br/>behind campus login proxy"]
     end
@@ -46,9 +46,9 @@ flowchart TD
     REPS --> BUILD
     VEND --> BUILD
     BUILD --> IDX & HAND & KITF
-    JSON --> SQLGEN --> MYSQL
-    MYSQL --> PHP --> IDX
-    ADMIN --> MYSQL
+    JSON --> SQLGEN --> PGDB
+    PGDB --> PHP --> IDX
+    ADMIN --> PGDB
 ```
 
 ## Components
@@ -59,7 +59,7 @@ flowchart TD
 | `scripts/admin_server.py` + `admin_ui.html` | The Data Console. Standard-library HTTP server bound to `127.0.0.1` only, never linked from the public pages. Add/edit records, bulk-import CSV, retire, and publish. |
 | `scripts/build_site.py` | Builds all three deliverables. Filters out expired records, inlines the offline bundle, and emits `data.js` + `data/geo.json`. |
 | `scripts/make_vendor.py` | Run once while online. Vendors the Illinois toolkit, fonts and brand assets into `assets/vendor/`, rewriting every external URL to a `data:` URI. |
-| `scripts/pri_sql.py` | Exports `activities.json` to `sql/data.sql` (MySQL) or `sql/data.pgsql.sql` (PostgreSQL) as an idempotent upsert. |
+| `scripts/pri_sql.py` | Exports `activities.json` to `sql/data.sql` (PostgreSQL) as an idempotent upsert. |
 | `tools/migrate.php`, `migrations/` | Numbered schema migrations for both engines with checksums in `schema_migrations`. |
 | `tools/load-pg.php` | Loads `activities.json` into PostgreSQL and verifies every field of every row and a checksum. |
 | `scripts/studio.py` | The Studio: the application's own source, editable from the Console's *Code & scripts* tab, so someone other than the original author can fix it. Confined, syntax-checked, reversible and logged. |

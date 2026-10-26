@@ -10,11 +10,14 @@ the database. "Publish" regenerates index.html / handout.html / data.js.
 
 Pure stdlib.
 """
-import json, os, sys, subprocess, csv, io, re, datetime, webbrowser, urllib.parse, secrets
+import json, os, sys, subprocess, csv, io, re, datetime, webbrowser, urllib.parse, secrets, base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import app_config
 import pri_data as db
 import studio
+import ui_dialog
+import ui_tokens
+import ui_fonts
 
 PORT = 8770
 
@@ -29,10 +32,26 @@ ALLOWED_ORIGINS = {"http://127.0.0.1:%d" % PORT, "http://localhost:%d" % PORT,
                    "http://[::1]:%d" % PORT}
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 
-SURVEYS = ["INHS", "ISGS", "ISWS", "ISAS", "ISTC"]
+
+def _icon_link():
+    """The app icon as a data: URI, read from the one committed assets/favicon.svg.
+
+    The console had no icon at all, so its tab showed a blank page mark beside the
+    public pages that carry one (PDT-29). Inlined rather than linked, because the
+    console serves no static files and the rule here is that nothing is fetched.
+    """
+    try:
+        with open(os.path.join(db.PROJ, "assets", "favicon.svg"), "rb") as f:
+            return ('<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,'
+                    + base64.b64encode(f.read()).decode("ascii") + '">')
+    except OSError:
+        return ""
+
+
+SURVEYS = [s["id"] for s in db.SURVEYS]   # one palette and one order (PDT-01)
 TYPES = ["Program", "Project", "Facility", "Grant", "Publication", "News", "Community science"]
 SCOPES = ["statewide", "sited", "regional", "external"]
-STATUSES = ["Active", "Ongoing", "Completed", "Planned", "Published", "Pending"]
+STATUSES = list(db.STATUSES)                # one list (Q-16)
 
 # Fields copied straight through from the form / CSV (string-valued).
 STR_FIELDS = ["survey", "title", "type", "topic", "group", "summary", "description", "lead",
@@ -293,6 +312,21 @@ class Handler(BaseHTTPRequestHandler):
             # reading our HTML, so it can never learn the token.
             page = page.replace("</head>",
                                 '<meta name="pri-csrf" content="%s"></head>' % CSRF_TOKEN, 1)
+            # The back office carries the same icon as the public pages (PDT-29),
+            # inlined from the one committed file so nothing is fetched.
+            page = page.replace("</head>", _icon_link() + "</head>", 1)
+            # The survey palette comes from pri_data, the same list the public pages
+            # draw from, so a colour cannot drift between the console and the site.
+            page = page.replace("/*SURVEYS*/", db.survey_js(), 1)
+            # The campus faces, lifted from the vendored toolkit (Q-19, PDT-03).
+            page = page.replace("/*FONTS*/", ui_fonts.font_faces(), 1)
+            # The one token block, from the same module the public pages use
+            # (PDT-32). The back office keeps the system font stack until Q-19.
+            page = page.replace("/*TOKENS*/", ui_tokens.tokens_css(
+                ":root", ui_tokens.FONT_BODY_SYSTEM, ui_tokens.FONT_HEAD_SYSTEM), 1)
+            # The same dialog the Kit carries, from the same module (PDT-37).
+            page = page.replace("/*DIALOG_CSS*/", ui_dialog.DIALOG_CSS, 1)
+            page = page.replace("/*DIALOG_JS*/", ui_dialog.DIALOG_JS, 1)
             return self._html(page)
         if p == "/api/records":
             return self._json(records_payload())

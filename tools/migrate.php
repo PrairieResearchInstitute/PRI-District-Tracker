@@ -1,6 +1,6 @@
 <?php
 /**
- * tools/migrate.php: numbered schema migrations for the hosted layer, on MySQL or
+ * tools/migrate.php: numbered schema migrations for the hosted layer, on
  * PostgreSQL, run from the command line through includes/db.php.
  *
  * Built from the drez-db-access PHP track template (decision D-003) with the
@@ -9,12 +9,10 @@
  * PostgreSQL, stop at the first failure.
  *
  * Files, in migrations/:
- *   0001_baseline.pgsql.sql     PostgreSQL, beside
- *   0001_baseline.mysql.sql     its MySQL twin (same number and name)
- *   0004_x.sql                  one file that runs on both engines
+ *   0001_baseline.pgsql.sql     PostgreSQL (the only engine since Q-11, 2026-10-20)
+ *   0004_x.sql                  a file with no engine in its name
  *
- * Engine and credentials come from includes/db.php: DB_DRIVER (mysql default,
- * pgsql), then the environment or <dataFolder>/pg.env. Nothing is read from the
+ * Credentials come from includes/db.php: the environment or <dataFolder>/pg.env. Nothing is read from the
  * command line, so no password ever appears in a process list.
  *
  * Usage:
@@ -26,7 +24,7 @@
  *
  * Registry: schema_migrations(version, name, checksum, applied_at, status, error).
  * Only status 'ok' counts as applied; a failed row is retried next run.
- * MySQL commits each DDL statement by itself, so a failed MySQL migration can be
+ * Some engines commit each DDL statement by itself, so a failed migration can be
  * half applied; the failure is still recorded and nothing after it runs.
  * Exit codes: 0 done, 1 a migration failed or a checksum changed, 2 usage.
  */
@@ -68,7 +66,7 @@ if (!is_dir($dir)) {
 }
 $found = [];
 foreach (scandir($dir) as $f) {
-    if (!preg_match('/^(\d{4})_([a-z0-9_]+?)(?:\.(mysql|pgsql))?\.sql$/', $f, $m)) {
+    if (!preg_match('/^(\d{4})_([a-z0-9_]+?)(?:\.(pgsql))?\.sql$/', $f, $m)) {
         continue;
     }
     [, $v, $name] = $m;

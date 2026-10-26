@@ -1,9 +1,28 @@
-# Sources of truth for the PRI District Tracker.
-# See "Sources of truth" in the PRI AI project guide (.claude/skills/pri-data-sources).
-# Name credentials by their environment variable, never by their value.
+# Sources of truth for PRI District Tracker.
+# Format: pri-data-sources (PRI AI project template; the skill sits in
+# apps/pri-district-tracker/.claude/skills/pri-data-sources). ODSC collects
+# these files to inventory PRI data. Name credentials by their environment
+# variable, never by their value. Keep this file current with every change.
+
+app: pri-district-tracker
+display_name: PRI District Tracker
+owner_netid: dreslik
+# University of Illinois Data Classification (Information Security Standard
+# DAT01.1.1): Public, Internal, Sensitive, High Risk. The app takes the highest
+# class of any data it holds (core-lib D-020).
+classification: Internal
+classification_basis: >
+  The published records describe public research work and hold no personnel,
+  HR or restricted data (intent.md, out of scope). The stores also keep internal
+  notes, records not yet confirmed or already retired, award amounts with
+  principal investigators' names, and NetID role grants (docs/schema.md), which
+  are internal operational records and directory information under core-lib D-020.
+radiant:
+  hosting: "Docker containers pri-district-tracker-test and pri-district-tracker-live"
+  databases: [district_tracker_live, district_tracker_test]
 
 inputs:
-  # Data this project reads but does not own.
+  # Data this project reads but does not own. A copy here is a COPY; the original stays authoritative.
 
   - name: Illinois legislative district boundaries
     location: data/il_congress_current.geojson, data/il_senate.geojson, data/il_house.geojson
@@ -52,27 +71,70 @@ owned:
   # Data created here that exists nowhere else. These MUST be backed up.
 
   - name: Tracker activities (the database of record)
-    location: data/activities.json  (table `activities` in PostgreSQL once hosted; tools/load-pg.php loads and verifies it)
+    engine: JSON files
+    location: >
+      data/activities.json in the app folder on the staff computer (the drive copy),
+      edited through the Data Console (D-016, D-019). Radiant holds no copy of the
+      file: each publish loads it, verified, into the activities table of
+      district_tracker_live and district_tracker_test with tools/load-pg.php (next entry).
+    contains_personal_data: yes
+    personal_data: staff names as project leads and principal investigators; no personal contact details
+    classification: Internal
     backup: >
       py scripts/backup_data.py - verified, timestamped snapshots to $PRI_BACKUP_DIR,
       else <dataFolder>/backups when config.local.json names a dataFolder (on the
       drive: ../../data/pri-district-tracker/backups), else ./backups.
       Keeps 30 days of dailies, then one per month.
       Schedule it daily; check it with `py scripts/backup_data.py --verify`.
+      On Radiant: radiant-backup.sh folder backup (being added); the nightly dumps of the PostgreSQL copy hold its records as of the
+      last publish.
+    retention: >
+      the app's own rule: 30 days of daily snapshots, then one per month. Records
+      are never deleted; retiring sets show_until into the past.
+    source: transcribed by staff from the INHS inventories and survey reports through the Data Console
     note: >
       Holds every activity plus its lifecycle stamps (ingested_at, updated_at,
       show_until). Nothing is ever deleted; retiring a record only sets show_until
-      into the past. WARNING: a single-file database on a synced network share is
-      explicitly discouraged (.claude/skills/pri-database) because concurrent edits
-      overwrite each other. Moving to Postgres/MySQL on the Radiant VM resolves this.
+      into the past. WARNING: a single-file database is explicitly discouraged
+      (.claude/skills/pri-database) because concurrent edits overwrite each other.
+      PostgreSQL now serves the hosted layer; the JSON file stays the database of
+      record until the owner decides when the host becomes the editor (Q-13, D-019).
+
+  - name: Hosted database (activities, awards, settings, user_roles)
+    engine: PostgreSQL 17
+    location: >
+      On Radiant: databases district_tracker_live and district_tracker_test, schema
+      public, tables from migrations 0001 to 0004. Until the move: database
+      district_tracker on the estate cluster on the drive (D-016).
+    contains_personal_data: yes
+    personal_data: staff names as project leads and principal investigators; NetIDs and campus group names in user_roles
+    classification: Internal
+    backup: >
+      radiant-backup.sh nightly at 02:30: pg_dump -Fc of district_tracker_live and
+      district_tracker_test to Taiga, SHA-256 sidecar, restore into a scratch database
+      with a row-count compare. On the drive until the move: platform/scripts/pg-nightly-backup.js.
+    retention: ladder of 7 daily, 4 weekly (Sunday) and 6 monthly verified dumps
+    source: >
+      activities loaded from data/activities.json by tools/load-pg.php; edits and
+      CSV imports through the back office (php/admin_ingest.php), which the next
+      publish reload replaces; role grants written by tools/roles.php as the owner
+      role (D-018, D-020)
 
   - name: API keys (none held today)
+    engine: SQLite
     location: <dataFolder>/keys.db - a separate, git-ignored SQLite database
-      (app standard v2 section A); on the drive ../../data/pri-district-tracker/keys.db
+      (app standard v2 section A); on the drive ../../data/pri-district-tracker/keys.db.
+      Radiant holds no keys.db; the hosted layer reads its database credentials
+      from the tier environment files.
+    contains_personal_data: no
+    personal_data: none
+    classification: Internal (holds nothing today; a stored key would make the store Sensitive)
     backup: >
       Deliberately NOT in py scripts/backup_data.py, which snapshots the activities
       only. A credential belongs in no export, report or shared copy. The owner
       re-enters one with py scripts/keys.py --set NAME.
+    retention: none; never snapshotted
+    source: typed by the owner with py scripts/keys.py --set NAME
     note: >
       The tracker needs no key: scripts/fetch_reps.py reads the Open States public
       bulk roster, which takes none, and district assignment is local point-in-polygon
@@ -82,12 +144,21 @@ owned:
       environment, named in .env.example (standard exception A4).
 
   - name: PRI QR code artwork
-    location: assets/PRI-QR.png
-    backup: covered by OneDrive sync
+    engine: files
+    location: assets/PRI-QR.png, tracked in git; the image copies it into both containers on Radiant
+    contains_personal_data: no
+    personal_data: none
+    classification: Public
+    backup: >
+      tracked in git and pushed to the GitHub remote (origin/main), so every clone
+      and every image carries it. NOT covered by radiant-backup.sh, which dumps
+      databases only.
+    retention: git history
+    source: supplied by PRI
     note: supplied by PRI; printed on the one-page handout.
 
 outputs:
-  # Files this project produces. Reproducible from inputs, owned records and code.
+  # Files or records this project produces, reproducible from inputs, owned data and code.
 
   - name: Interactive tracker, print handout and offline Kit
     location: index.html, handout.html, PRI-Tracker-Kit.html, data.js, data/geo.json

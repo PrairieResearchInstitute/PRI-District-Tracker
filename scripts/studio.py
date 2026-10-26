@@ -46,7 +46,7 @@ PRIVATE = {"config.local.json"}
 # Build outputs. Editing them is pointless - the next build overwrites the lot.
 # includes/core.php is a drez-php-core copy: fix it in the library and pull again.
 GENERATED = {"index.html", "handout.html", "PRI-Tracker-Kit.html", "data.js",
-             "data/geo.json", "data/reps.json", "sql/data.sql", "sql/data.pgsql.sql",
+             "data/geo.json", "data/reps.json", "sql/data.sql",
              "includes/core.php"}
 
 # Larger than any source file here; keeps the big geodata out of the editor.

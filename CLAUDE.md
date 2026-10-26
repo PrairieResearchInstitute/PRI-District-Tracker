@@ -21,7 +21,7 @@ AGENTS.md above holds the domain rules (offline rendering, the toolkit header, n
 
 - `scripts/`: the Python generator, Data Console, Studio, backups; standard library only, run with `py`.
 - `scripts/app_config.py`: the portable loader; the only writer of `config.local.json` (git-ignored).
-- `data/activities.json`: database of record, tracked in git, stays in the repository.
+- `data/activities.json`: database of record; stays in the app folder on disk but is git-ignored, because only empty databases go to a repository (D-021). `py scripts/backup_data.py` snapshots it; git does not hold it.
 - `..\..\data\pri-district-tracker\backups`: what the app writes outside git (snapshots, Studio copies, history.log). Read-only for Claude.
 - `php/`, `includes/`, `migrations/`, `tools/*.php`, `sql/`, `health.php`, `Dockerfile`, `compose.yaml`: hosted layer, not deployed. `includes/db.php` is the only data-access module; `DB_DRIVER` is `pgsql` (default, D-017) or `mysql` (until go-live); PostgreSQL credentials come from `<dataFolder>/pg.env` and point at the estate cluster on the drive (port 5433; a pg.env naming another port is refused). No API server: the layer connects to the cluster directly.
 - `tools/php/`: git-ignored portable PHP (SETUP.bat copies it).
@@ -34,8 +34,9 @@ AGENTS.md above holds the domain rules (offline rendering, the toolkit header, n
 - Never regenerate `assets/vendor` (make_vendor.py needs the internet); git tracks it from the initial commit although .gitignore lists it.
 - Never create a `.env` with values; `.env.example` lists the names. Never open, print or copy `pg.env`; `includes/db.php` reads it.
 - Never run `tools/migrate.php` or `tools/load-pg.php` with `--live`; the owner switches over with `py scripts/pg_switch_over.py --confirm-live`. Tests use `--test` / `DT_TEST_DRIVER=pgsql` only.
-- Never edit an applied file in `migrations/`; add the next number as a `.pgsql.sql` and `.mysql.sql` twin.
+- Never edit an applied file in `migrations/`; add the next number as a `.pgsql.sql` file. PostgreSQL is the only engine (Q-11, 2026-10-20).
 - Tests must never write the data folder: `tests/_ctx.py` points `PRI_BACKUP_DIR` at a temp folder.
+- Before any UI work, read `docs/design.md` (the UI Elements spec, skill drez-ui-elements) and reuse the component it names; styles live in the `build_site.py` constants it lists.
 
 ## Things Claude gets wrong here
 

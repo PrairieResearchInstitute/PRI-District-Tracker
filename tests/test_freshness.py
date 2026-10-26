@@ -45,7 +45,7 @@ class RuleParity(unittest.TestCase):
     """The rule exists in two places and they must not drift apart."""
 
     def test_php_clause_matches_python_semantics(self):
-        """CURRENT_DATE is standard SQL: the same clause on MySQL and PostgreSQL, and
+        """CURRENT_DATE is standard SQL, and
         inclusive of today, as fresh() is. The PHP suite runs it on PostgreSQL."""
         import os
         with open(os.path.join(_ctx.ROOT, "includes", "db.php"), encoding="utf-8") as f:

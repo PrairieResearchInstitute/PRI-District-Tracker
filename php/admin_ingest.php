@@ -15,7 +15,9 @@
 //   - a CSV line changes only the columns its file has.
 require __DIR__ . '/../includes/activities.php';
 require __DIR__ . '/../includes/auth.php';
+require __DIR__ . '/../includes/ui.php';
 
+core_install_exception_handler('pri-district-tracker', 'dt_error_page');
 session_boot('pri_district_tracker');
 
 // ---- auth ----
@@ -31,6 +33,39 @@ $TYPES   = ACTIVITY_TYPES;
 $SCOPES  = ACTIVITY_SCOPES;
 $msg = '';
 $msgKind = 'ok';
+// Set when a retire needs confirming, so the page asks on itself rather than
+// through a native confirm() that cannot be styled and dies with JavaScript off
+// (PDT-37, Q-27). Holds the record id waiting for a yes.
+$confirmRetire = null;
+
+/**
+ * One confirmation card for a post that cannot be undone casually.
+ *
+ * docs/design.md section 4. The question stands on the page the reader is already
+ * looking at, the posted fields ride along as hidden inputs with a fresh CSRF token
+ * and confirmed=1, and Cancel sits on the left with the action on the right.
+ *
+ * Here rather than in includes/core.php, which is synced from drez-php-core and
+ * shared; the spec allows a local includes/ui.php when a second page needs it.
+ *
+ * @param array<string,string> $fields the posted fields to carry forward
+ */
+function dt_confirm_page(string $title, string $question, string $okLabel,
+                         array $fields, string $cancelHref): string
+{
+    $html = '<div class="confirm" role="group" aria-labelledby="dt-confirm-t">'
+          . '<h2 id="dt-confirm-t">' . h($title) . '</h2>'
+          . '<p>' . h($question) . '</p>'
+          . '<form method="post" action="admin_ingest.php">' . csrf_field()
+          . '<input type="hidden" name="confirmed" value="1">';
+    foreach ($fields as $name => $value) {
+        $html .= '<input type="hidden" name="' . h($name) . '" value="' . h($value) . '">';
+    }
+    return $html
+         . '<a class="btn gh" href="' . h($cancelHref) . '">Cancel</a>'
+         . '<button class="btn pri" type="submit">' . h($okLabel) . '</button>'
+         . '</form></div>';
+}
 
 // ---- handle actions ----
 // Writes are allowed by default once the form is safe (owner, 2026-10-12, D-019);
@@ -51,7 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !BACKOFFICE_WRITES) {
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_require();   // stops with 400 unless the form carried this session's token
     try {
-        if (isset($_POST['action']) && $_POST['action'] === 'retire') {
+        if (isset($_POST['action']) && $_POST['action'] === 'retire' && empty($_POST['confirmed'])) {
+            $confirmRetire = (string) $_POST['id'];
+        } elseif (isset($_POST['action']) && $_POST['action'] === 'retire') {
             retire_activity((string) $_POST['id']);
             $msg = 'Retired "' . h((string) $_POST['id']) . '" (hidden from the public site, still in the database).';
         } elseif (!empty($_FILES['csv']['tmp_name'])) {
@@ -119,34 +156,69 @@ $rows = console_activities();
 function opt(array $a, $sel = '') { return implode('', array_map(fn($v) => '<option' . ($v === $sel ? ' selected' : '') . '>' . htmlspecialchars($v) . '</option>', $a)); }
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PRI Data Console (host)</title>
+<title>PRI District Tracker: Data Console (host)</title>
+<?= dt_icon_link() ?>
+<link rel="stylesheet" href="../assets/fonts.css">
 <style>
-body{font:15px/1.45 "Segoe UI",system-ui,sans-serif;margin:0;background:#f4f6f8;color:#23272c}
-.top{background:#13294B;border-top:6px solid #FF5F05;color:#fff;padding:14px 26px}
-.top h1{margin:0;font-size:19px}.top .sub{color:#b9c4d6;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-.wrap{max-width:1080px;margin:0 auto;padding:20px 26px 60px}
-.msg{background:#e8f5ec;border:1px solid #b7dfc4;border-radius:8px;padding:10px 14px;margin-bottom:16px}
-.msg.err{background:#fdecea;border-color:#f3b8b0}
-.note{background:#fff7e6;border:1px solid #f5d79e;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13.5px}
-.card{background:#fff;border:1px solid #e3e6ea;border-radius:10px;padding:18px 20px;margin-bottom:20px}
+<?= DT_TOKENS ?>
+body{font-family:var(--font-body);font-size:var(--fs-body);line-height:1.45;margin:0;background:var(--page);color:var(--ink)}
+.top{background:var(--blue);border-top:6px solid var(--orange);color:#fff;padding:14px 26px}
+.top h1{margin:0;font-size:17px}.top .sub{color:#b9c4d6;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.wrap{max-width:1060px;margin:0 auto;padding:20px 26px 60px}
+<?= DT_FOOT_CSS ?>
+.notice{border-radius:var(--radius-md);padding:10px 14px;font-size:13px;line-height:1.45;margin:0 0 16px}
+.notice.ok,.flash-success{background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok-text)}
+.notice.warn,.flash-notice{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-text)}
+.notice.err,.flash-error{background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-text)}
+.flash{border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin:0 0 16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:20px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
-.f{display:flex;flex-direction:column;gap:4px}.f.full{grid-column:1/3}
-label{font-size:12px;font-weight:600;color:#5b6069;text-transform:uppercase;letter-spacing:.03em}
-input,select,textarea{padding:8px 10px;border:1px solid #e3e6ea;border-radius:8px;font:inherit}
-.btn{border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
-.pri{background:#FF5F05;color:#fff}.dk{background:#13294B;color:#fff}
-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ea;border-radius:10px;overflow:hidden}
-th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #eee;font-size:13.5px}
-th{background:#fafbfc;font-size:11px;text-transform:uppercase;color:#5b6069}
-.chip{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid #e3e6ea}
-.on{color:#1c7a3f}.off{color:#8a9099}
-.hint{font-size:12px;color:#5b6069}.sec{grid-column:1/3;font-weight:700;color:#13294B;border-top:1px solid #eee;padding-top:10px}
+.f{display:flex;flex-direction:column;gap:4px}.f.full{grid-column:1 / -1}
+label{font-size:12px;font-weight:600;color:var(--storm-dark);text-transform:uppercase;letter-spacing:.03em}
+input,select,textarea{padding:8px 10px;border:1px solid var(--field);border-radius:var(--radius-md);font:inherit}
+/* The same button as the public pages (PDT-05; build_site.py buttons_css). Q-26:
+   white never sits on var(--orange), so the primary carries navy and hovers to var(--il-altgeld). */
+.btn{border:0;border-radius:var(--radius-md);padding:9px 16px;cursor:pointer;text-decoration:none;
+  display:inline-block;font-family:inherit;font-size:14px;line-height:1.15;font-weight:600}
+.btn.pri{background:var(--orange);color:var(--blue)}
+.btn.pri:hover{background:var(--il-altgeld);color:#fff}
+.btn.dk{background:var(--blue);color:#fff}
+.btn.dk:hover{background:var(--blue-deep)}
+.btn.gh{background:#fff;border:1px solid var(--line);color:#23272C}
+.btn.gh:hover{background:var(--soft)}
+.btn.gh{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn.gh:hover{background:var(--soft)}
+.btn.sm{padding:4px 9px;border-radius:var(--radius-sm);font-size:12px}
+.btn:disabled{opacity:.5;cursor:default}
+.confirm{background:#fff;border:1px solid var(--line);border-left:5px solid var(--orange);border-radius:var(--radius-lg);
+  padding:16px 20px;margin-bottom:16px}
+.confirm h2{margin:0 0 6px;font-size:17px;color:var(--blue)}
+.confirm p{margin:0 0 14px;font-size:14px;line-height:1.5}
+.confirm form{display:flex;gap:10px;align-items:center;margin:0}
+/* PDT-07: one visible focus ring. */
+:focus-visible{outline:3px solid var(--link);outline-offset:2px;border-radius:var(--radius-xs)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-table-cell)}
+th{background:#FAFBFC;font-size:var(--fs-table-head);text-transform:uppercase;letter-spacing:.05em;color:var(--storm)}
+tr:last-child td{border-bottom:0}
+td.empty{text-align:center;color:var(--storm);padding:26px}
+.chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
+.chip.shown{color:#1C7A3F}.chip.hidden-state{color:#8A9099}
+.hint{font-size:12px;color:var(--storm-dark)}.sec{grid-column:1 / -1;font-weight:700;color:var(--blue);border-top:1px solid #eee;padding-top:10px}
+.tscroll{overflow-x:auto}
+@media(max-width:820px){.wrap{padding-left:16px;padding-right:16px}
+  .grid{grid-template-columns:1fr}}
 </style></head><body>
-<div class="top"><h1>PRI District Tracker &mdash; Data Console (host)</h1>
-<div class="sub">Back-office &middot; signed in as <?= htmlspecialchars($ADMIN_EMAIL) ?> (<?= h((string) $AUTH['role']) ?>) &middot; not the public site</div></div>
+<?= dt_back_office_head('PRI District Tracker: Data Console (host)',
+      'Back-office / signed in as ' . $ADMIN_EMAIL . ' (' . (string) $AUTH['role'] . ') / not the public site') ?>
 <div class="wrap">
-<?php if ($msg): ?><div class="msg<?= $msgKind === 'err' ? ' err' : '' ?>"><?= $msg ?></div><?php endif; ?>
-<div class="note">The Data Console on the staff computer is the editor of record. Each publish reloads this
+<?php if ($msg): ?><div class="notice <?= $msgKind === 'err' ? 'err' : 'ok' ?>" role="status"><?= $msg ?></div><?php endif; ?>
+<?php if ($confirmRetire !== null): ?>
+<?= dt_confirm_page('Retire This Record?',
+      'The record leaves the public site and stays in the database, so you can show it again later.',
+      'Retire Record', ['action' => 'retire', 'id' => $confirmRetire], 'admin_ingest.php') ?>
+<?php endif; ?>
+<div class="notice warn">The Data Console on the staff computer is the editor of record. Each publish reloads this
 database from <b>data/activities.json</b>, which replaces any change saved here. Make lasting changes in the
 Data Console.</div>
 
@@ -163,7 +235,10 @@ on this form; if someone else saves this record first, your save is refused and 
 <div class="f full"><label>Summary * (card blurb)</label><textarea name="summary" required><?= h(fv($EDIT, 'summary')) ?></textarea></div>
 <div class="f full"><label>Description</label><textarea name="description"><?= h(fv($EDIT, 'description')) ?></textarea></div>
 <div class="f"><label>Lead</label><input name="lead" value="<?= h(fv($EDIT, 'lead')) ?>"></div>
-<div class="f"><label>Status</label><input name="status" value="<?= h(fv($EDIT, 'status')) ?>"></div>
+<div class="f"><label>Status</label><select name="status">
+<option value=""></option>
+<?php foreach (DT_STATUSES as $s): ?><option<?= fv($EDIT, 'status') === $s ? ' selected' : '' ?>><?= h($s) ?></option><?php endforeach; ?>
+</select></div>
 <div class="f"><label>Funder / partners</label><input name="funder" value="<?= h(fv($EDIT, 'funder')) ?>"></div>
 <div class="f"><label>Program area (group)</label><input name="group" value="<?= h(fv($EDIT, 'group')) ?>"></div>
 <div class="f"><label>URL</label><input name="url" value="<?= h(fv($EDIT, 'url')) ?>"></div>
@@ -197,7 +272,7 @@ locally and import the SQL.)</div>
 <?php endif; ?>
 
 <h3>Current records (<?= count($rows) ?>)</h3>
-<table><thead><tr><th>Survey</th><th>Title</th><th>Type</th><th>Updated</th><th>Show until</th><th>On site</th><th></th></tr></thead><tbody>
+<div class="tscroll"><table><thead><tr><th>Survey</th><th>Title</th><th>Type</th><th>Updated</th><th>Show until</th><th>On Site</th><th></th></tr></thead><tbody>
 <?php foreach ($rows as $r): ?>
 <tr>
 <td><b><?= htmlspecialchars($r['survey']) ?></b></td>
@@ -205,12 +280,12 @@ locally and import the SQL.)</div>
 <td><?= htmlspecialchars($r['type']) ?></td>
 <td><?= htmlspecialchars($r['updated_at']) ?></td>
 <td><?= $r['show_until'] ? htmlspecialchars($r['show_until']) : '<i class="hint">never</i>' ?></td>
-<td><span class="chip <?= $r['shown'] ? 'on' : 'off' ?>"><?= $r['shown'] ? 'yes' : 'hidden' ?></span></td>
-<td><?php if ($CAN_EDIT): ?><a class="btn" style="border:1px solid #e3e6ea;background:#fff;text-decoration:none;color:inherit;display:inline-block" href="admin_ingest.php?edit=<?= rawurlencode((string) $r['id']) ?>">Edit</a>
-<?php if ($r['shown']): ?><form method="post" action="admin_ingest.php" onsubmit="return confirm('Retire (hide) this record? It stays in the database.')" style="margin:4px 0 0">
+<td><span class="chip <?= $r['shown'] ? 'shown' : 'hidden-state' ?>"><?= $r['shown'] ? 'Showing' : 'Expired' ?></span></td>
+<td><?php if ($CAN_EDIT): ?><a class="btn gh sm" href="admin_ingest.php?edit=<?= rawurlencode((string) $r['id']) ?>">Edit</a>
+<?php if ($r['shown']): ?><form method="post" action="admin_ingest.php" style="margin:4px 0 0">
 <?= csrf_field() ?><input type="hidden" name="action" value="retire"><input type="hidden" name="id" value="<?= htmlspecialchars($r['id']) ?>">
-<button class="btn" style="border:1px solid #e3e6ea;background:#fff">Retire</button></form><?php endif; ?><?php endif; ?></td>
+<button class="btn gh sm" type="submit">Retire</button></form><?php endif; ?><?php endif; ?></td>
 </tr>
 <?php endforeach; ?>
-</tbody></table>
-</div></body></html>
+</tbody></table></div>
+</div><?= dt_back_office_foot() ?></body></html>

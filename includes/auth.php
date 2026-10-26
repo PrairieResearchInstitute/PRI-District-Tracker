@@ -226,13 +226,20 @@ function require_role(string $min): array {
     $who = current_identity();
     if ($who === null) {
         http_response_code(401);
-        exit('Not signed in. This page must be reached through the campus login proxy.');
+        require_once __DIR__ . '/ui.php';
+        exit(dt_back_office_page('PRI District Tracker : Data Console (host)',
+            'Back-office / not signed in',
+            '<div class="notice err">Not signed in. Reach this page through the campus login proxy.</div>'));
     }
     $role = user_role($who);
     if (!role_at_least($role, $min)) {
         http_response_code(403);
-        exit('Signed in as ' . h(identity_label($who)) . ', which holds no ' . h($min)
-             . ' role for tracker data. Ask an administrator to grant your NetID or one of your campus groups a role.');
+        require_once __DIR__ . '/ui.php';
+        exit(dt_back_office_page('PRI District Tracker : Data Console (host)',
+            'Back-office / no role for this page',
+            '<div class="notice err">Signed in as ' . h(identity_label($who))
+            . ', which holds no ' . h($min) . ' role for tracker data. Ask an administrator
+            to grant your NetID or one of your campus groups a role.</div>'));
     }
     return ['who' => $who, 'role' => $role];
 }

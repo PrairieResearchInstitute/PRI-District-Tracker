@@ -10,8 +10,6 @@
 //   DB_DRIVER=pgsql   the default (owner Q-06, 2026-10-12): PostgreSQL, the Radiant target;
 //                     until the move the estate cluster on the portable drive,
 //                     127.0.0.1 port 5433 (platform D-028)
-//   DB_DRIVER=mysql   the MySQL layer as first written; never deployed, kept selectable
-//                     only until go-live on Radiant, then deleted (D-017)
 //
 // Credentials (PRI rules in .claude/skills/pri-secrets and pri-auth):
 //   1. the environment: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD and the
@@ -40,7 +38,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/core.php';
 
-const DB_DRIVERS = ['mysql', 'pgsql'];
+const DB_DRIVERS = ['pgsql'];   // MySQL retired by the owner, 2026-10-20 (Q-11)
 const PG_ENV_KEYS = ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD', 'PGTESTDATABASE'];
 // The estate cluster on the portable drive (platform D-028). pg.env exists only on the
 // drive, so a pg.env naming any other port points at a server the estate does not use.
@@ -148,7 +146,7 @@ function db_driver(): string {
     if ($driver === null) {
         $v = strtolower(trim((string) (getenv('DB_DRIVER') ?: 'pgsql')));
         if (!in_array($v, DB_DRIVERS, true)) {
-            db_fail('DB_DRIVER must be mysql or pgsql.');
+            db_fail('DB_DRIVER must be pgsql.');
         }
         $driver = $v;
     }
@@ -224,8 +222,7 @@ function db_dsn(array $s): string {
         return 'pgsql:host=' . $s['host'] . ';port=' . ($s['port'] !== '' ? $s['port'] : PG_DRIVE_PORT) . ';dbname=' . $s['name']
              . ($ssl !== '' ? ';sslmode=' . $ssl : '');
     }
-    return 'mysql:host=' . $s['host'] . ($s['port'] !== '' ? ';port=' . $s['port'] : '')
-         . ';dbname=' . $s['name'] . ';charset=utf8mb4';
+    db_fail('DB_DRIVER must be pgsql.');
 }
 
 /** The time zone whose calendar decides "today" for the display timer. */
@@ -287,34 +284,31 @@ function db_transaction(callable $fn): mixed {
 // written once in SQL both understand (CURRENT_DATE, NOW(), INTERVAL '1' DAY).
 
 /** Quote a column or table name for the engine. Names come from code, never from a request. */
-function db_ident(string $name, ?string $driver = null): string {
+function db_ident(string $name): string {
     if (!preg_match('/^[a-z_][a-z0-9_]*$/', $name)) {
         throw new InvalidArgumentException('Not a plain column or table name: ' . $name);
     }
-    return ($driver ?? db_driver()) === 'pgsql' ? '"' . $name . '"' : '`' . $name . '`';
+    return '"' . $name . '"';
 }
 
 /**
  * INSERT ... that updates the row when the key exists.
  *   $keepFirst  columns whose stored value wins once set (ingested_at)
  *   $bump       integer columns incremented on every update (version)
- * MySQL: ON DUPLICATE KEY UPDATE c = VALUES(c). PostgreSQL: ON CONFLICT (key) DO
- * UPDATE SET c = EXCLUDED.c. Named placeholders :<column>. $driver defaults to
- * db_driver(); the tests pass it to see both forms.
+ * ON CONFLICT (key) DO UPDATE SET c = EXCLUDED.c, with named placeholders
+ * :<column>. One engine since the owner retired MySQL on 2026-10-20 (Q-11).
  */
-function db_upsert_sql(string $table, array $cols, string $key, array $keepFirst = [], array $bump = [], ?string $driver = null): string {
-    $driver = $driver ?? db_driver();
-    $id = fn(string $n) => db_ident($n, $driver);
+function db_upsert_sql(string $table, array $cols, string $key, array $keepFirst = [], array $bump = []): string {
+    $id = fn(string $n) => db_ident($n);
     $t = $id($table);
     $q = array_map($id, $cols);
     $ph = array_map(fn($c) => ':' . $c, $cols);
-    $pg = $driver === 'pgsql';
     $set = [];
     foreach ($cols as $c) {
         if ($c === $key) {
             continue;
         }
-        $new = $pg ? 'EXCLUDED.' . $id($c) : 'VALUES(' . $id($c) . ')';
+        $new = 'EXCLUDED.' . $id($c);
         $set[] = in_array($c, $keepFirst, true)
             ? $id($c) . ' = COALESCE(' . $t . '.' . $id($c) . ', ' . $new . ')'
             : $id($c) . ' = ' . $new;
@@ -323,9 +317,7 @@ function db_upsert_sql(string $table, array $cols, string $key, array $keepFirst
         $set[] = $id($c) . ' = ' . $t . '.' . $id($c) . ' + 1';
     }
     $sql = 'INSERT INTO ' . $t . ' (' . implode(', ', $q) . ') VALUES (' . implode(', ', $ph) . ') ';
-    return $sql . ($pg
-        ? 'ON CONFLICT (' . $id($key) . ') DO UPDATE SET ' . implode(', ', $set)
-        : 'ON DUPLICATE KEY UPDATE ' . implode(', ', $set));
+    return $sql . 'ON CONFLICT (' . $id($key) . ') DO UPDATE SET ' . implode(', ', $set);
 }
 
 // ----------------------------------------------------------------- identity
@@ -335,5 +327,5 @@ function db_upsert_sql(string $table, array $cols, string $key, array $keepFirst
 // ----------------------------------------------------------------- shared SQL
 // The freshness rule lives in ONE place (mirrors scripts/pri_data.py `fresh`):
 // a row shows only while show_until is NULL (evergreen) or today or later.
-// CURRENT_DATE is standard SQL, so the clause is identical on MySQL and PostgreSQL.
+// CURRENT_DATE is standard SQL and matches pri_data.fresh() exactly.
 const FRESH_WHERE = '(show_until IS NULL OR show_until >= CURRENT_DATE)';

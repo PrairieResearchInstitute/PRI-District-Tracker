@@ -32,7 +32,7 @@ class Confined(unittest.TestCase):
 
     def test_build_outputs_are_not_editable(self):
         """They are overwritten by the next build, so editing them is a trap."""
-        for gen in ["index.html", "data.js", "sql/data.sql", "sql/data.pgsql.sql", "includes/core.php"]:
+        for gen in ["index.html", "data.js", "sql/data.sql", "includes/core.php"]:
             self.assertIsNone(studio.resolve(gen), "%s should not be editable" % gen)
 
     def test_migrations_and_portable_php_are_not_editable(self):
