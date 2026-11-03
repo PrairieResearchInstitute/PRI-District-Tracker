@@ -93,7 +93,7 @@ only and is never linked from the public pages.
   `.env` is gitignored; add new variable names to `.env.example`.
 - No username/password table and no custom login. An authenticating proxy over
   Campus AD or CILogon supplies the identity in `X-Forwarded-Email`;
-  `require_admin()` checks it against `ADMIN_EMAILS`. `DEV_USER` is local-only and
+  `require_role()` checks the role from `user_roles` or the `AUTH_*` allowlists (D-018); `ADMIN_EMAILS` still grants admin. `DEV_USER` is local-only and
   must be empty in production.
 - Do not load real personnel, HR or restricted data. Activity records describe
   public research work.

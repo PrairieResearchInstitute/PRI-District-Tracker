@@ -9,8 +9,8 @@ AGENTS.md above holds the domain rules (offline rendering, the toolkit header, n
 | Command | Healthy output |
 |---|---|
 | `py tools/check.py` (the gate) | `CHECK OK` |
-| `py scripts/run_tests.py` | `OK` (145 tests) |
-| `DT_TEST_DRIVER=pgsql` + PHP `tests/php/run-tests.php` | `79 passed, 0 failed` (test database on the drive cluster only; the gate runs it when pg.env exists) |
+| `py scripts/run_tests.py` | `OK` (155 tests) |
+| `DT_TEST_DRIVER=pgsql` + PHP `tests/php/run-tests.php` | `130 passed, 0 failed` (test database on the drive cluster only; the gate runs it when pg.env exists) |
 | `py scripts/estate_pg.py status` / `start` / `stop` | the estate PostgreSQL on the drive, 127.0.0.1 port 5433 (platform D-028, D-015) |
 | `py scripts/find_php.py` | the portable PHP in `tools/php` with pgsql |
 | `PRI_SKIP_REPS=1 py scripts/build_site.py` | exit 0; outputs match git unless the data changed |
@@ -23,7 +23,7 @@ AGENTS.md above holds the domain rules (offline rendering, the toolkit header, n
 - `scripts/app_config.py`: the portable loader; the only writer of `config.local.json` (git-ignored).
 - `data/activities.json`: database of record; stays in the app folder on disk but is git-ignored, because only empty databases go to a repository (D-021). `py scripts/backup_data.py` snapshots it; git does not hold it.
 - `..\..\data\pri-district-tracker\backups`: what the app writes outside git (snapshots, Studio copies, history.log). Read-only for Claude.
-- `php/`, `includes/`, `migrations/`, `tools/*.php`, `sql/`, `health.php`, `Dockerfile`, `compose.yaml`: hosted layer, not deployed. `includes/db.php` is the only data-access module; `DB_DRIVER` is `pgsql` (default, D-017) or `mysql` (until go-live); PostgreSQL credentials come from `<dataFolder>/pg.env` and point at the estate cluster on the drive (port 5433; a pg.env naming another port is refused). No API server: the layer connects to the cluster directly.
+- `php/`, `includes/`, `migrations/`, `tools/*.php`, `sql/`, `health.php`, `Dockerfile`, `compose.yaml`: hosted layer, not deployed. `includes/db.php` is the only data-access module; `DB_DRIVER` is `pgsql`, the only engine (D-031); PostgreSQL credentials come from `<dataFolder>/pg.env` and point at the estate cluster on the drive (port 5433; a pg.env naming another port is refused). No API server: the layer connects to the cluster directly.
 - `tools/php/`: git-ignored portable PHP (SETUP.bat copies it).
 - `reference/`: git-ignored source documents (Information docx, district text files, captured PRI pages).
 - `intent.md`, `plan.md`, `handoff.md`, `docs/decisions.md`: state on disk; history in `docs/handoffs/`.

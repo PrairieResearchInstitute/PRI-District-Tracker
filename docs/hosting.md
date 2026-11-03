@@ -149,10 +149,11 @@ Steps, test tier first, then live with the same image tag:
    which targets `DB_NAME`.
 3. Grant the app role its rows (the SQL above).
 4. Load the records, verified, from the current `data/activities.json` mounted read-only:
-   `docker run --rm --network <proxy network> --env-file pri-district-tracker-test-owner.env -v <path>/activities.json:/src/activities.json:ro <image:tag> php tools/load-pg.php --source /src/activities.json --live --confirm-live`
+   `docker run --rm --network <proxy network> --env-file pri-district-tracker-test-owner.env -v <path>/activities.json:/src/activities.json:ro <image:tag> php tools/load-pg.php --source /src/activities.json --test`
+   (on the live tier, use `pri-district-tracker-live-owner.env` and `--live --confirm-live`)
    It must end with `VERIFIED: <n> rows of activities match the source`.
 5. Authority by NetID and group (D-018, D-020), as the owner:
-   `... php tools/roles.php --live --confirm-live seed` makes NetID dreslik
+   `... php tools/roles.php --test seed` (live tier: `--live --confirm-live` with the live owner env file) makes NetID dreslik
    (configure-me@example.edu) admin and nothing else; then the owner grants everyone else, for example
    `grant "group:<PRI group>" viewer` and `grant "group:<editors group>" editor` with the
    group names NCSA's proxy sends. `list` shows every grant; `revoke` keeps the row.

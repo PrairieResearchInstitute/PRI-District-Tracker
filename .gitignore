@@ -49,7 +49,6 @@ index.html
 handout.html
 PRI-Tracker-Kit.html
 data.js
-data/geo.json
 data/reps.json
 sql/data.sql
 sql/data.pgsql.sql

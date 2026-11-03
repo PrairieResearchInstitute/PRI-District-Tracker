@@ -4,7 +4,7 @@ Written from `migrations/` (`*.pgsql.sql`). PostgreSQL is the only engine (Q-11,
 
 One engine, so one set of types.
 
-The same field names are used end to end: the JSON records in `data/activities.json`, the Data Console, `scripts/pri_sql.py` and the PHP layer all share them, so nothing has to be renamed as data moves from the local tool to the hosted database. The SQL reserved word `group` is quoted: back-quoted on MySQL, double-quoted on PostgreSQL. `lead` is back-quoted on MySQL, where it is reserved from version 8.0.2.
+The same field names are used end to end: the JSON records in `data/activities.json`, the Data Console, `scripts/pri_sql.py` and the PHP layer all share them, so nothing has to be renamed as data moves from the local tool to the hosted database. The SQL reserved word `group` is double-quoted on PostgreSQL (the only engine, D-031). `lead` needs no quoting there.
 
 
 ## `activities`

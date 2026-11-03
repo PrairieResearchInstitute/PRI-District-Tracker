@@ -164,7 +164,7 @@ outputs:
     location: index.html, handout.html, PRI-Tracker-Kit.html, data.js, data/geo.json
     produced_by: scripts/build_site.py
 
-  - name: SQL import of the activities table (MySQL, PostgreSQL)
+  - name: SQL import of the activities table (PostgreSQL)
     location: sql/data.sql, sql/data.pgsql.sql
     produced_by: scripts/pri_sql.py
 
