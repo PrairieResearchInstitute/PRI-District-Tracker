@@ -103,6 +103,11 @@ ROOT_FILES = {
 # Written by SETUP.bat on each machine, git-ignored, so absent from a fresh clone.
 PER_MACHINE = {"config.local.json"}
 
+# Agent state files. The public PRI copy leaves out all three on purpose
+# (drez-github-publish-public rule 7), so they travel as a set: all present (the
+# working repository) or all absent (the public copy). One missing alone still fails.
+AGENT_STATE = {"intent.md", "plan.md", "handoff.md"}
+
 
 class TheRootHoldsOnlyWorkingFiles(unittest.TestCase):
     def _tracked_root(self):
@@ -120,8 +125,11 @@ class TheRootHoldsOnlyWorkingFiles(unittest.TestCase):
 
     def test_every_named_working_file_still_exists(self):
         """Keeps the list honest: a renamed or deleted file must be renamed here too."""
-        missing = sorted(n for n in ROOT_FILES - PER_MACHINE
-                         if not os.path.isfile(os.path.join(_ctx.ROOT, n)))
+        missing = {n for n in ROOT_FILES - PER_MACHINE
+                   if not os.path.isfile(os.path.join(_ctx.ROOT, n))}
+        if missing >= AGENT_STATE:          # the public copy: the whole set left out
+            missing -= AGENT_STATE
+        missing = sorted(missing)
         self.assertEqual(missing, [], "ROOT_FILES names files that are gone: %s" % missing)
 
     def test_the_design_preview_is_reference_material(self):
