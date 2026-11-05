@@ -227,16 +227,22 @@ check('no page constructs PDO or calls ->query/->prepare itself', (function () u
 })());
 
 // ---- identity and authority (D-018): NetID from the proxy, role from NetID or group
+// Institution-agnostic: the campus domain is a setting (AUTH_NETID_DOMAINS, default
+// illinois.edu), so the checks use a reserved example domain. The public copy rewrites
+// every real campus address to a placeholder, and a fixture built on one would break.
+$origNetidDomains = getenv('AUTH_NETID_DOMAINS');
+register_shutdown_function(fn() => putenv($origNetidDomains === false ? 'AUTH_NETID_DOMAINS' : 'AUTH_NETID_DOMAINS=' . $origNetidDomains));
 foreach (['AUTH_USER_HEADER', 'AUTH_EMAIL_HEADER', 'AUTH_GROUPS_HEADER', 'AUTH_GROUPS_SEPARATOR', 'AUTH_NETID_DOMAINS',
           'AUTH_ADMINS', 'AUTH_EDITORS', 'AUTH_VIEWERS', 'ADMIN_EMAILS', 'DEV_USER', 'DEV_GROUPS'] as $k) {
     putenv($k);
 }
+putenv('AUTH_NETID_DOMAINS=campus.example.edu');   // held through the PostgreSQL checks below
 check('no header and no DEV_USER means nobody is signed in', current_identity([]) === null);
 $who = current_identity(['HTTP_X_FORWARDED_USER' => 'JDoe2', 'HTTP_X_FORWARDED_GROUPS' => 'PRI Staff, INHS-Editors ,']);
 check('the NetID comes from X-Forwarded-User, lowercased', ($who['netid'] ?? null) === 'jdoe2', json_encode($who));
 check('groups split on the separator, blanks dropped', ($who['groups'] ?? []) === ['PRI Staff', 'INHS-Editors'], json_encode($who));
-$who = current_identity(['HTTP_X_FORWARDED_EMAIL' => 'configure-me@example.edu']);
-check('a campus address alone yields its NetID', ($who['netid'] ?? null) === 'jdoe2' && $who['email'] === 'configure-me@example.edu', json_encode($who));
+$who = current_identity(['HTTP_X_FORWARDED_EMAIL' => 'JDoe2@campus.example.edu']);
+check('a campus address alone yields its NetID', ($who['netid'] ?? null) === 'jdoe2' && $who['email'] === 'jdoe2@campus.example.edu', json_encode($who));
 $who = current_identity(['HTTP_X_FORWARDED_EMAIL' => 'someone@example.edu']);
 check('an address outside AUTH_NETID_DOMAINS keeps the address and no NetID', $who !== null && $who['netid'] === null
       && $who['email'] === 'someone@example.edu', json_encode($who));
@@ -259,14 +265,14 @@ check('a proxy header wins over DEV_USER', (current_identity(['HTTP_X_FORWARDED_
 putenv('DEV_USER');
 putenv('DEV_GROUPS');
 putenv('AUTH_ADMINS=boss1');
-putenv('AUTH_EDITORS=group:INHS-Editors, configure-me@example.edu');
+putenv('AUTH_EDITORS=group:INHS-Editors, writer@campus.example.edu');
 putenv('AUTH_VIEWERS=group:pri staff');
 putenv('ADMIN_EMAILS=legacy@example.edu');
 $id = fn(array $h) => current_identity($h);
 check('a NetID on AUTH_ADMINS is admin', user_role($id(['HTTP_X_FORWARDED_USER' => 'boss1']), false) === 'admin');
 check('a group on AUTH_EDITORS makes its members editors, case aside',
       user_role($id(['HTTP_X_FORWARDED_USER' => 'u1', 'HTTP_X_FORWARDED_GROUPS' => 'inhs-editors']), false) === 'editor');
-check('an address on an allowlist matches the address', user_role($id(['HTTP_X_FORWARDED_EMAIL' => 'configure-me@example.edu']), false) === 'editor');
+check('an address on an allowlist matches the address', user_role($id(['HTTP_X_FORWARDED_EMAIL' => 'writer@campus.example.edu']), false) === 'editor');
 check('the highest role wins when several apply',
       user_role($id(['HTTP_X_FORWARDED_USER' => 'boss1', 'HTTP_X_FORWARDED_GROUPS' => 'PRI Staff']), false) === 'admin');
 check('a group on AUTH_VIEWERS gives viewer only', user_role($id(['HTTP_X_FORWARDED_USER' => 'u2', 'HTTP_X_FORWARDED_GROUPS' => 'PRI Staff']), false) === 'viewer');
@@ -339,13 +345,13 @@ check('seeding twice changes nothing', $code2 === 0 && str_contains($o2, 'unchan
       && (int) db_value('SELECT COUNT(*) FROM user_roles') === 1, trim($o2));
 check('the app reads the owner as admin, by NetID or by his campus address',
       user_role(['netid' => 'dreslik', 'email' => null, 'groups' => []]) === 'admin'
-      && user_role(['netid' => auth_netid_from('configure-me@example.edu'), 'email' => 'configure-me@example.edu', 'groups' => []]) === 'admin');
+      && user_role(['netid' => auth_netid_from('dreslik@campus.example.edu'), 'email' => 'dreslik@campus.example.edu', 'groups' => []]) === 'admin');
 [$code, $o] = run(array_merge(php_cmd(), [$ROOT . '/tools/roles.php', 'seed']), ['DT_DB_TARGET' => null]);
 check('seeding the real database stops without --live --confirm-live', $code === 2 && str_contains($o, 'Refusing'), trim($o));
 db_run('DELETE FROM user_roles');   // the test database only; the checks below start from no grants
 
 // ---- roles in the database (D-018): tools/roles.php writes, the app reads
-[$code, $o] = run(array_merge($roles, ['grant', 'configure-me@example.edu', 'editor', '--note', 'test grant', '--by', 'owner1']));
+[$code, $o] = run(array_merge($roles, ['grant', 'JDoe2@campus.example.edu', 'editor', '--note', 'test grant', '--by', 'owner1']));
 check('roles.php grants editor to a NetID given as an address', $code === 0 && str_contains($o, 'granted editor to netid jdoe2'), trim($o));
 [$code, $o] = run(array_merge($roles, ['grant', 'group:PRI Staff', 'viewer']));
 check('roles.php grants viewer to a campus group, stored lowercase', $code === 0
