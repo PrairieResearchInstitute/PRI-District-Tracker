@@ -22,6 +22,11 @@ jobs:
       - name: Build the offline vendor bundle
         run: python scripts/make_vendor.py
 
+      # data/activities.json is git-ignored (institutional data, D-021), so a clean
+      # clone has none. Seed an empty database: CI builds and tests on public data only.
+      - name: Seed an empty database of record
+        run: python scripts/seed_ci_data.py
+
       - name: Build the site
         env:
           PRI_SKIP_REPS: "1"      # no need to re-fetch legislators on every CI run
