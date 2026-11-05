@@ -115,12 +115,12 @@ client-side guard drops anything that expires between rebuilds. Once hosted,
   `.env.example`. No function prints a value, and `--list` reports names and dates only.
 
 - The Data Console binds to `127.0.0.1` **and** requires a per-run token on every
-  `/api/` call, plus Host and Origin checks. Localhost binding alone does not stop a
+  `/api/` call, plus Host and Origin checks. Binding to 127.0.0.1 alone does not stop a
   cross-site POST from a page in the same browser - and the Studio writes code the next
   build runs, so that would have been a way onto the machine.
 - A Studio restore only accepts a backup whose name belongs to the file being restored,
   so one file's copy cannot be written over another.
-- If the console is ever exposed beyond localhost it needs real authentication (the
+- If the console is ever exposed beyond 127.0.0.1 it needs real authentication (the
   campus login proxy) and the Studio needs its own access grant, as in PRI Facilities.
 
 ## Still open

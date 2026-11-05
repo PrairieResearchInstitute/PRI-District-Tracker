@@ -22,8 +22,8 @@
 //      cluster on the drive with PGHOST, PGPORT (5433), PGDATABASE, PGUSER,
 //      PGPASSWORD and PGTESTDATABASE; a pg.env naming another port is refused.
 //      dataFolder comes from config.local.json and is relative to the app folder,
-//      so no path is written here. The cluster is started and stopped by
-//      scripts/estate_pg.py (platform D-028, decision D-015).
+//      so no path is written here. The cluster is started and stopped only by
+//      the estate's estate-pg.js, through tools/estate-pg.ps1 (platform D-028).
 // No value is ever printed: errors name variables and files, never their contents.
 //
 // Tests: DT_DB_TARGET=test selects the test database (DB_TEST_NAME, or

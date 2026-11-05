@@ -19,7 +19,9 @@ import ui_dialog
 import ui_tokens
 import ui_fonts
 
-PORT = 8770
+# serve.ps1 picks the first free port from 8770 up and passes it here (it never
+# stops whatever holds a port); a plain run uses 8770.
+PORT = int(os.environ.get("PRI_CONSOLE_PORT") or 8770)
 
 # Binding to 127.0.0.1 keeps other MACHINES out. It does not keep other WEB PAGES out:
 # a page open in the same browser can POST here, and a "simple" request (text/plain)
@@ -305,6 +307,14 @@ class Handler(BaseHTTPRequestHandler):
             ok, why = self._authorized()
             if not ok:
                 return self._json({"ok": False, "error": why}, 403)
+        if p == "/health":
+            # tools/serve.ps1 asks this which folder the server on a port runs
+            # from, and compares that folder with its own by file identity.
+            # Touches no data, needs no token, and answers only to our Host.
+            if (self.headers.get("Host") or "").strip().lower() not in ALLOWED_HOSTS:
+                return self._json({"ok": False}, 403)
+            return self._json({"app": "pri-district-tracker", "root": db.PROJ,
+                               "port": PORT, "ok": True})
         if p == "/":
             with open(os.path.join(SCRIPTS, "admin_ui.html"), encoding="utf-8") as f:
                 page = f.read()
@@ -419,13 +429,14 @@ def main():
     tmp = app_config.use_drive_temp()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = "http://127.0.0.1:%d" % PORT
-    print("PRI Data Console (back-office, localhost only) ->", url)
+    print("PRI Data Console (back-office, this computer only) ->", url)
     print("Ctrl+C to stop. This is NOT the public site.")
     print("temp files ->", tmp)
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+    if not os.environ.get("PRI_NO_BROWSER"):    # serve.ps1 -Open opens it itself
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

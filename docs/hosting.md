@@ -39,8 +39,17 @@ Every record carries three stamps:
 ## Local workflow (use this now)
 
 ```
-py scripts/admin_server.py         # opens http://127.0.0.1:8770 (back-office, localhost only)
+tools\data-console.ps1 start -Open # the backend, the Data Console: http://127.0.0.1:8770
+tools\data-console.ps1 stop        # (each runs as powershell -NoProfile -ExecutionPolicy Bypass -File ...)
+py scripts/admin_server.py         # the same console in a terminal, this computer only
 ```
+
+The main page is a different server: `PRI District Tracker.exe` runs `tools\serve.ps1
+start -Open`, which starts the drive's PostgreSQL and `php -S` on 127.0.0.1 (8780 to 8789)
+with the app folder as document root, as the container does, and opens `index.html`;
+`tools\serve.ps1 stop` ends it. Both scripts bind 127.0.0.1 only, take the first free
+port in their range, recognise their own server by file identity (so the fixed estate
+folder and the drive-letter path count as one copy), and log to `data\server.log`.
 
 - **+ New record** / **Edit** — full form; for *sited/regional* records, fill **latitude/longitude**
   and the US House / IL Senate / IL House districts are assigned automatically on save
@@ -65,12 +74,12 @@ server). Moving to Radiant later changes connection settings only.
 
 Starting and stopping: `py tools/check.py` and `py scripts/pg_switch_over.py` start the
 drive cluster when it is not running and stop it cleanly afterwards when they started it.
-By hand: `py scripts/estate_pg.py start`, `stop` or `status`. The helper runs the shared
-`<estate>\runtime\postgresql\estate-pg.js` when a node.exe exists (under
-`<estate>\runtime`, then the PATH); otherwise it calls the runtime's `pg_ctl` with the same
-data folder, port 5433 and a fast clean stop, and before stopping counts other connections
-as the tracker's role (`tools/pg-connections.php`), leaving the cluster running when
-another app is connected or the count cannot run (D-015).
+By hand: `tools\estate-pg.ps1 start`, `stop` or `status` (or `py scripts/estate_pg.py`,
+which calls it). The wrapper hands the action to the estate's own
+`<estate>\runtime\postgresql\estate-pg.js` through a node.exe (under `<estate>\runtime`,
+then the PATH), the only thing that starts or stops the cluster (owner ruling 2026-11-03);
+estate-pg.js leaves the cluster running while another app is connected. Run it from a
+normal window: PostgreSQL refuses an administrator account, and the wrapper says so.
 
 PHP: any PHP 8.1+ with `pdo_pgsql`. On this computer `scripts/find_php.py` finds it
 (`$PRI_PHP`, then `tools/php/php.exe`, then the PATH) and prints the command line; the

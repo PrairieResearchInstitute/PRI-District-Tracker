@@ -109,7 +109,10 @@ user which documents changed.
 py scripts/make_vendor.py        # once, ONLINE: build the offline bundle
 py scripts/build_site.py         # build index/handout/Kit  (PRI_SKIP_REPS=1 skips the rep refresh)
 py scripts/make_templates.py     # regenerate the staff intake CSV templates
-py scripts/admin_server.py       # local Data Console -> http://127.0.0.1:8770
+py scripts/admin_server.py       # local Data Console -> http://127.0.0.1:8770 (by hand)
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/serve.ps1 start -Open   # the main page (PHP web site); what PRI District Tracker.exe runs
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/serve.ps1 stop          # stop it and ask PostgreSQL to stop
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/data-console.ps1 start -Open   # the backend, the Data Console
 py scripts/pri_sql.py            # activities.json -> sql/data.sql (--dialect pgsql -> sql/data.pgsql.sql)
 py scripts/backup_data.py        # verified snapshot of owned data (schedule this daily)
 py scripts/run_tests.py          # the test suite - run before and after a change

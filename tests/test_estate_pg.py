@@ -1,8 +1,9 @@
 """The drive's PostgreSQL: found from the marker, port 5433, never the computer's.
 
-Platform D-028. scripts/estate_pg.py starts and stops the estate cluster on the
-portable drive. These tests build fake estates in a temp folder; none starts,
-stops or connects to a database.
+Platform D-028, D-057. scripts/estate_pg.py asks tools/estate-pg.ps1, which runs the
+estate's estate-pg.js, to start and stop the cluster on the portable drive. These
+tests build fake estates in a temp folder; none starts, stops or connects to a
+database.
 """
 import unittest, os, tempfile, shutil
 import _ctx  # noqa: F401
@@ -53,20 +54,14 @@ class TheClusterIsTheDrives(unittest.TestCase):
             self.assertIn("const PG_DRIVE_PORT = '%d';" % estate_pg.PORT, f.read())
 
 
-class NodeIsPreferredFromTheDrive(FakeEstate):
-    def test_a_node_under_runtime_wins(self):
-        self.mark()
-        d = os.path.join(self.root, "runtime", "node")
-        os.makedirs(d)
-        node = os.path.join(d, "node.exe")
-        open(node, "w").close()
-        self.assertEqual(estate_pg.find_node(estate_pg.paths(self.root)), node)
+class OnlyTheEstateScriptRunsTheCluster(FakeEstate):
+    """D-057: the helper calls tools/estate-pg.ps1, which runs estate-pg.js; nothing
+    here finds its own pg_ctl or creates a cluster."""
 
-    def test_an_uninitialised_cluster_is_never_created(self):
-        self.mark()
-        p = estate_pg.paths(self.root)
-        self.assertFalse(estate_pg.initialized(p))
-        self.assertFalse(os.path.exists(p["data"]))
+    def test_the_helper_goes_through_the_wrapper(self):
+        self.assertEqual(estate_pg.WRAPPER, os.path.join(_ctx.ROOT, "tools", "estate-pg.ps1"))
+        self.assertFalse(hasattr(estate_pg, "find_node"))
+        self.assertFalse(hasattr(estate_pg, "other_connections"))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@
     "Windows 10 or 11",
     "Python 3.13 with the py launcher; the generator uses the standard library only, so nothing else installs",
     "The drive that holds the App_to_Migrate folder, under any drive letter",
+    "Node.js, which runs the estate's estate-pg.js to start and stop the drive's PostgreSQL for the main page; the portable PHP in tools\\php, which SETUP.bat copies",
     "The offline bundle in assets\\vendor, already in the application folder; py scripts\\make_vendor.py rebuilds it once while online"
   ],
   "install": [
@@ -16,7 +17,8 @@
   ],
   "run": [
     "Build the three pages: py scripts\\build_site.py (set PRI_SKIP_REPS=1 to skip the legislator refresh). Open index.html or PRI-Tracker-Kit.html by double-click.",
-    "Add or edit records in the Data Console: py scripts\\admin_server.py, then open http://127.0.0.1:8770. The console runs on this computer only, date-stamps every record, sets its display timer, assigns districts from a latitude and longitude, and rebuilds the site when you click Publish.",
+    "Open the main page, the PHP web site users see: double-click PRI District Tracker.exe. It starts the drive's PostgreSQL and PHP's own server with the application folder as the web root, and opens index.html at http://127.0.0.1:8780 (or the next free port up to 8789). Start it from a normal window, not Run as administrator, because PostgreSQL refuses an administrator account. Stop it with: powershell -NoProfile -ExecutionPolicy Bypass -File tools\\serve.ps1 stop. The same script with status says whether it runs; the log is data\\server.log.",
+    "Add or edit records in the backend, the Data Console: powershell -NoProfile -ExecutionPolicy Bypass -File tools\\data-console.ps1 start -Open, which opens http://127.0.0.1:8770 (or the next free port up to 8779); stop it with the same script and stop. The console runs on this computer only, date-stamps every record, sets its display timer, assigns districts from a latitude and longitude, and rebuilds the site when you click Publish.",
     "Fix the code without an editor: the console's Code and scripts tab edits the project's own source, checks each save, keeps the previous version and records every change.",
     "Run the tests before and after a change: py scripts\\run_tests.py."
   ],
@@ -26,7 +28,7 @@
     { "key": "PRI_SKIP_REPS", "meaning": "Environment variable; 1 skips the legislator refresh during a build (no network)." },
     { "key": "DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, ADMIN_EMAILS, DEV_USER", "meaning": "Environment variables for the hosted PHP layer only (php\\, sql\\), which is written but not deployed. .env.example lists the names; a real .env never enters git." }
   ],
-  "data": "data\\activities.json is the database of record. It holds every activity with its lifecycle stamps and stays in the repository, tracked in git. The maps and legislator files the build reads also stay in data\\. What the application writes outside git, the backups\\ folder (verified snapshots of activities.json, the Studio's edit copies and history.log), lives in data\\pri-district-tracker on the drive, named by dataFolder in config.local.json. Source documents that feed the data but do not run the application sit in the git-ignored reference folder.",
+  "data": "data\\activities.json is the database of record. It holds every activity with its lifecycle stamps and stays in the application folder on disk, git-ignored, because only empty databases go to a repository (D-021). The maps and legislator files the build reads also stay in data\\. What the application writes outside git, the backups\\ folder (verified snapshots of activities.json, the Studio's edit copies and history.log), lives in data\\pri-district-tracker on the drive, named by dataFolder in config.local.json. Source documents that feed the data but do not run the application sit in the git-ignored reference folder.",
   "backups": "py scripts\\backup_data.py writes a verified, timestamped snapshot of activities.json to the backups folder and prunes old ones (30 days of dailies, then one per month); py scripts\\backup_data.py --verify proves the newest one restores. Schedule it daily. The drive's own backup job also copies the data folder to Backups\\pri-district-tracker in the App_to_Migrate folder and checks each copy.",
   "support": "M. J. Dreslik maintains the application."
 }

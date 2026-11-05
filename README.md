@@ -19,14 +19,32 @@ py scripts/make_vendor.py     # ONCE, while online: vendor the toolkit/fonts off
 py scripts/build_site.py      # build all three deliverables
 ```
 
-Then open `index.html` (or `PRI-Tracker-Kit.html`) directly. `PRI_SKIP_REPS=1` skips
-the legislator refresh for a faster rebuild.
+`PRI_SKIP_REPS=1` skips the legislator refresh for a faster rebuild.
+`PRI-Tracker-Kit.html` also opens by double-click.
 
-To add or edit data:
+## The main page and the backend
 
-```bash
-py scripts/admin_server.py    # Data Console -> http://127.0.0.1:8770
-```
+Run `SETUP.bat` once on each computer. Then:
+
+| What | Start | Stop |
+|---|---|---|
+| **Main page**: the PHP web site users see, `index.html` served as on the host | double-click **PRI District Tracker.exe** | `tools\serve.ps1 stop` |
+| **Backend**: the Data Console, where staff add and edit records | `tools\data-console.ps1 start -Open` | `tools\data-console.ps1 stop` |
+
+Each command runs as
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools\<script>.ps1 <action>`.
+
+The `.exe` runs `tools\serve.ps1 start -Open`. It starts the drive's PostgreSQL, then
+PHP's own server with the app folder as the web root (as in the container), at
+`http://127.0.0.1:8780` or the next free port up to 8789, and opens the page.
+`serve.ps1 stop` ends the server and asks PostgreSQL to stop, which it does only when
+no other app still uses it. Start the main page from a normal window: PostgreSQL
+refuses to run as an administrator.
+
+The Data Console answers at `http://127.0.0.1:8770` or the next free port up to 8779.
+`status` with either script says whether it runs and on which port, and `start -Console`
+runs it in the window for debugging. `py scripts/admin_server.py` still works by hand.
+The server log is `data\server.log`.
 
 The Console runs on your machine only and is never linked from the public pages. It
 date-stamps every record, sets its display timer, and works out the legislative
@@ -42,7 +60,8 @@ would not import is refused rather than saved), the previous version is kept and
 be put back with one click, and every change is recorded in
 `backups/studio/history.log`.
 
-After editing a `scripts/*.py` file, restart the console so the change is loaded, then
+After editing a `scripts/*.py` file, restart the console (`tools\data-console.ps1 stop`,
+then `start -Open`) so the change is loaded, then
 press **Publish** to rebuild the site.
 
 ## Keeping it safe
@@ -54,7 +73,7 @@ py scripts/run_tests.py              # run the test suite
 ```
 
 Schedule the backup daily (Windows Task Scheduler -> daily -> `py` with argument
-`scriptsackup_data.py`). Set `PRI_BACKUP_DIR` to somewhere outside the synced
+`scripts\backup_data.py`, starting in the app folder). Set `PRI_BACKUP_DIR` to somewhere outside the synced
 folder so a sync failure cannot take the backups with it.
 
 ## How data behaves

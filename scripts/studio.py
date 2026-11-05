@@ -15,7 +15,7 @@ the person using it is tired, in a hurry, and about to make a mistake:
     recorded    who saved what, when, and how much it changed.
 
 The Data Console that serves this binds to 127.0.0.1, so the gate is the machine
-itself. If this is ever exposed beyond localhost it needs its own access grant, the
+itself. If this is ever exposed beyond 127.0.0.1 it needs its own access grant, the
 way Facilities grants 'studio' separately from being an administrator.
 
 Pure stdlib.

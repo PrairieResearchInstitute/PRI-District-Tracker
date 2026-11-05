@@ -49,6 +49,7 @@ index.html
 handout.html
 PRI-Tracker-Kit.html
 data.js
+data/geo.json
 data/reps.json
 sql/data.sql
 sql/data.pgsql.sql
@@ -96,3 +97,10 @@ data/legislators-current.json
 data/activities.json
 CLAUDE.local.md
 docs/handoffs/
+
+# tools/serve.ps1 logs (the main page PHP server, the Data Console and their output)
+data/server.log
+data/console.log
+data/console-stderr.log
+data/php.log
+data/php-stderr.log

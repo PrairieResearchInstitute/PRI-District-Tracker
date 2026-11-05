@@ -82,7 +82,9 @@ if __name__ == "__main__":
 ROOT_FILES = {
     # Named by C1
     "AGENTS.md", "CLAUDE.md", "README.md", "intent.md", "plan.md", "handoff.md",
-    "SETUP.bat", "Data Console.bat",
+    "SETUP.bat",
+    # The one launcher (owner ruling 2026-11-03, D-058), built from launcher/launcher.ini
+    "PRI District Tracker.exe",
     # The owner's delivery rule: a README for people ships as .docx
     "README.docx",
     # Build, container and configuration
